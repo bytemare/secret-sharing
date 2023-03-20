@@ -6,7 +6,7 @@
 // LICENSE file in the root directory of this source tree or at
 // https://spdx.org/licenses/MIT.html
 
-package tests
+package secretsharing_test
 
 import (
 	"fmt"
@@ -41,8 +41,12 @@ func TestSecretSharing(t *testing.T) {
 				t.Fatalf("expected %d shares, got %d", max, len(shares))
 			}
 
+			subset := []*secretsharing.KeyShare{
+				shares[0], shares[1],
+			}
+
 			for k := 0; k <= int(max); k++ {
-				recovered, err := secretsharing.Combine(g, threshold, shares)
+				recovered, err := secretsharing.Combine(g, threshold, subset)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -54,6 +58,7 @@ func TestSecretSharing(t *testing.T) {
 		})
 	}
 }
+
 func TestSecretSharing_WithPolynomial(t *testing.T) {
 	threshold := uint(2)
 

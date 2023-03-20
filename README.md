@@ -1,29 +1,21 @@
-# {{.TEMPLATE}}
-[![{{.template}}](https://github.com/bytemare/{{.template}}/actions/workflows/ci.yml/badge.svg)](https://github.com/bytemare/{{.template}}/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/{{.template}}.svg)](https://pkg.go.dev/github.com/bytemare/{{.template}})
-[![codecov](https://codecov.io/gh/bytemare/{{.template}}/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/bytemare/{{.template}})
+# Secure Secret Sharing
+[![secret-sharing](https://github.com/bytemare/secret-sharing/actions/workflows/ci.yml/badge.svg)](https://github.com/bytemare/secret-sharing/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
+[![codecov](https://codecov.io/gh/bytemare/secret-sharing/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/bytemare/secret-sharing)
 
 ```
-  import "github.com/bytemare/{{.template}}"
+  import "github.com/bytemare/secret-sharing"
 ```
-{{Short description}}
 
-This package is continuously fuzzed on Fuzzbuzz.
+This package implements Verifiable Secret Sharing over Shamir's Secret Sharing with prime-order elliptic curve group scalars.
 
-#### What is {{.template}}?
+## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 
-> {{Short Philosophy about the concept we're implementing.}}
-
-#### References
-- {{If you have any, put links that can help know more.}}
-
-## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/{{.template}}.svg)](https://pkg.go.dev/github.com/bytemare/{{.template}})
-
-You can find the documentation and usage examples in [the package doc](https://pkg.go.dev/github.com/bytemare/{{.template}}).
+You can find the documentation and usage examples in [the package doc](https://pkg.go.dev/github.com/bytemare/secret-sharing).
 
 ## Versioning
 
-[SemVer](http://semver.org) is used for versioning. For the versions available, see the [tags on the repository](https://github.com/bytemare/{{.template}}/tags).
+[SemVer](http://semver.org) is used for versioning. For the versions available, see the [tags on the repository](https://github.com/bytemare/secret-sharing/tags).
 
 
 ## Contributing

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f # pin@master
+        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f
         with:
           fetch-depth: 0
       - name: Setup Go
@@ -25,7 +25,7 @@ jobs:
 
       # Lint
       - name: Linting
-        uses: golangci/golangci-lint-action@d149ece3f4b24e9c6b291dbcdfe0b4bb68ed31b2  # pin@master
+        uses: golangci/golangci-lint-action@d149ece3f4b24e9c6b291dbcdfe0b4bb68ed31b2
         with:
           version: latest
           args: --config=./.github/.golangci.yml ./...
@@ -40,7 +40,7 @@ jobs:
         go: [ '1.20', '1.19' ]
     steps:
       - name: Checkout repo
-        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f # pin@master
+        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f
         with:
           fetch-depth: 0
       - name: Setup Go

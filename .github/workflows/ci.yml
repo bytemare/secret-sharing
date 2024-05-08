@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f
+        uses: actions/checkout@44c2b7a8a4ea60a981eaca3cf939b5f4305c123b
         with:
           fetch-depth: 0
       - name: Setup Go
@@ -24,7 +24,7 @@ jobs:
 
       # Lint
       - name: Linting
-        uses: golangci/golangci-lint-action@9d1e0624a798bb64f6c3cea93db47765312263dc
+        uses: golangci/golangci-lint-action@a4f60bb28d35aeee14e6880718e0c85ff1882e64
         with:
           version: latest
           args: --config=./.github/.golangci.yml ./...
@@ -39,7 +39,7 @@ jobs:
         go: [ '1.22', '1.21' ]
     steps:
       - name: Checkout repo
-        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f
+        uses: actions/checkout@44c2b7a8a4ea60a981eaca3cf939b5f4305c123b
         with:
           fetch-depth: 0
       - name: Setup Go
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f
+        uses: actions/checkout@44c2b7a8a4ea60a981eaca3cf939b5f4305c123b
         with:
           fetch-depth: 0
       - name: Setup Go
@@ -70,7 +70,7 @@ jobs:
 
       # Codecov
       - name: Codecov
-        uses: codecov/codecov-action@1290bddc8851afa46a03b9a73dd9979a415d4c4f
+        uses: codecov/codecov-action@f691d469fbba7b31a1cb026e3a2f86e28c9dcdb6
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
@@ -78,7 +78,7 @@ jobs:
 
       # Sonar
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@6bbd64e0cb2194e04addb429d669a9ee873eeeef
+        uses: SonarSource/sonarcloud-github-action@19888635fa64d24e533d388efe8264402dfd721b
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

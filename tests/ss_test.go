@@ -20,6 +20,7 @@ import (
 var groups = []group.Group{
 	group.Ristretto255Sha512,
 	group.P256Sha256,
+	group.Secp256k1,
 }
 
 func TestSecretSharing(t *testing.T) {
@@ -221,6 +222,26 @@ func testBadPolynomial(g group.Group, threshold, max uint, p secretsharing.Polyn
 	}
 
 	return nil
+}
+
+func TestBadPolynomial_SecretNotSet(t *testing.T) {
+	threshold := uint(3)
+	total := uint(5)
+	expected := "provided polynomial's first coefficient not set to the secret"
+
+	for _, g := range groups {
+		// Test polynomial with first coefficient not set to the secret
+		polyNoSecret := make(secretsharing.Polynomial, threshold)
+		polyNoSecret[0] = g.NewScalar().Random()
+		polyNoSecret[1] = g.NewScalar().Random()
+		polyNoSecret[2] = g.NewScalar().Random()
+
+		t.Run(g.String(), func(tt *testing.T) {
+			if err := testBadPolynomial(g, threshold, total, polyNoSecret); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
+	}
 }
 
 func TestBadPolynomial_NilCoeff(t *testing.T) {

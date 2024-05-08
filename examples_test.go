@@ -16,9 +16,9 @@ import (
 	secretsharing "github.com/bytemare/secret-sharing"
 )
 
-// ExampleSecretSharing_Shard show how to split a private key into shares and how to recombine it from a
+// ExampleShardAndRecombine shows how to split a private key into shares and how to recombine it from a
 // subset of shares.
-func Example_secretSharing_Shard() {
+func ExampleShard() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
 	threshold := uint(3)    // the minimum amount of necessary shares to recombine the secret

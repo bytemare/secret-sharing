@@ -9,6 +9,8 @@
 package secretsharing_test
 
 import (
+	"fmt"
+
 	group "github.com/bytemare/crypto"
 
 	secretsharing "github.com/bytemare/secret-sharing"
@@ -16,40 +18,37 @@ import (
 
 // ExampleSecretSharing_Shard show how to split a private key into shares and how to recombine it from a
 // subset of shares.
-func ExampleSecretSharing_Shard() {
+func Example_secretSharing_Shard() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
-	threshold := uint(2)
-	shareholders := uint(3)
+	threshold := uint(3)    // the minimum amount of necessary shares to recombine the secret
+	shareholders := uint(7) // the total amount of key share-holders
 
 	// This is the global secret to be shared
 	secret := g.NewScalar().Random()
 
-	// Here we create a secret sharing instance
-	ss, err := secretsharing.New(g, threshold)
+	// Shard the secret into shares
+	shares, err := secretsharing.Shard(g, secret, threshold, shareholders)
 	if err != nil {
 		panic(err)
 	}
 
-	// and now we split the secret into shares
-	shares, _, err := ss.Shard(secret, shareholders)
-	if err != nil {
-		panic(err)
-	}
-
-	// here we recombine the shares to recover the secret
+	// Assemble a subset of shares to recover the secret. We must use [threshold] or more shares.
 	subset := []*secretsharing.KeyShare{
-		shares[0], shares[1],
+		shares[5], shares[0], shares[3],
 	}
 
-	for k := 0; k <= int(shareholders); k++ {
-		recovered, err := secretsharing.Combine(g, threshold, subset)
-		if err != nil {
-			panic(err)
-		}
-
-		if recovered.Equal(secret) != 1 {
-			panic("invalid recovered secret")
-		}
+	// Combine the subset of shares.
+	recovered, err := secretsharing.Combine(g, subset)
+	if err != nil {
+		panic(err)
 	}
+
+	if recovered.Equal(secret) != 1 {
+		fmt.Println("ERROR: recovery failed")
+	} else {
+		fmt.Println("Key split into shares and recombined with a subset of shares!")
+	}
+
+	// Output: Key split into shares and recombined with a subset of shares!
 }

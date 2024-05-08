@@ -1,15 +1,14 @@
 .PHONY: update
 update:
 	@echo "Updating dependencies..."
-	@cd ../ && go get -u
+	@cd ../ && go get -u ../...
 	@go mod tidy
-	@echo "Updating Github Actions pins..."
-	@$(foreach file, $(wildcard workflows/*.yml), pin-github-action $(file);)
 
 .PHONY: update-linters
 update-linters:
 	@echo "Updating linters..."
 	@go install mvdan.cc/gofumpt@latest
+	@go install github.com/google/addlicense@latest
 	@go install github.com/daixiang0/gci@latest
 	@go install github.com/segmentio/golines@latest
 	@go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@latest
@@ -20,8 +19,8 @@ fmt:
 	@echo "Formatting ..."
 	@go mod tidy
 	@go fmt ../...
-	@golines -m 120 -t 4 -w .
-	@gofumpt -w -extra .
+	@golines -m 120 -t 4 -w ../
+	@gofumpt -w -extra ../
 	@gci write -s Standard -s Default -s "Prefix($(shell go list -m))" ../
 	@fieldalignment -fix ../...
 

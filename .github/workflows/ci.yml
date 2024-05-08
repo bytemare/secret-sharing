@@ -3,7 +3,6 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    # The branches below must be a subset of the branches above
     branches: [ main ]
 
 permissions:
@@ -37,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.20', '1.19' ]
+        go: [ '1.22', '1.21' ]
     steps:
       - name: Checkout repo
         uses: actions/checkout@8459bc0c7e3759cdf591f513d9f141a95fef0a8f

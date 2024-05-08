@@ -9,15 +9,15 @@ linters:
     - contextcheck
     - cyclop
     - decorder
-    - depguard
+    #- depguard
     - dogsled
     - dupl
     - durationcheck
+    - err113
     - errcheck
     - errchkjson
     - errname
     - errorlint
-    - execinquery
     - exhaustive
     - exhaustruct
     - exportloopref
@@ -33,12 +33,10 @@ linters:
     - gocyclo
     - godot
     - godox
-    - goerr113
     - gofmt
     - gofumpt
     - goheader
     - goimports
-    - gomnd
     - gomoddirectives
     - gomodguard
     - goprintffuncname
@@ -51,10 +49,11 @@ linters:
     - interfacebloat
     - ireturn
     - lll
-    - logrlint
+    - loggercheck
     - maintidx
     - makezero
     - misspell
+    - mnd
     - nakedret
     - nestif
     - nilerr
@@ -143,20 +142,18 @@ linters-settings:
     simplify: true
   goimports:
     local-prefixes: github.com/bytemare/secret-sharing
-  gomnd:
+  mnd:
     checks:
       - argument
       - condition
       - return
       - assign
-    #ignored-functions:
-    #  - 'nist.setMapping'
-    #  - 'big.NewInt'
-    #  - 'hash2curve.HashToFieldXMD'
+    ignored-functions:
+      - 'secretsharing.Evaluate'
   gosimple:
     checks: [ "all" ]
   govet:
-    check-shadowing: true
+    shadow: true
     disable-all: true
     enable:
       - asmdecl

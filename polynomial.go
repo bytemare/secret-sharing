@@ -126,8 +126,9 @@ func (p Polynomial) hasDuplicates() bool {
 }
 
 // Evaluate evaluates the polynomial p at point x using Horner's method.
-func (p Polynomial) Evaluate(g group.Group, x *group.Scalar) *group.Scalar {
-	value := g.NewScalar().Zero().Add(p[len(p)-1]) // since value starts with 0, we can skip multiplying by x
+func (p Polynomial) Evaluate(x *group.Scalar) *group.Scalar {
+	// since value starts with 0, we can skip multiplying by x, and start from the end
+	value := p[len(p)-1].Copy()
 	for i := len(p) - 2; i >= 0; i-- {
 		value.Multiply(x)
 		value.Add(p[i])

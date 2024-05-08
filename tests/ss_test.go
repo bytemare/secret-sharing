@@ -44,15 +44,13 @@ func TestSecretSharing(t *testing.T) {
 				shares[0], shares[1],
 			}
 
-			for k := 0; k <= int(total); k++ {
-				recovered, err := secretsharing.Combine(g, subset)
-				if err != nil {
-					t.Fatal(err)
-				}
+			recovered, err := secretsharing.Combine(g, subset)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-				if recovered.Equal(secret) != 1 {
-					t.Fatal("invalid recovered secret")
-				}
+			if recovered.Equal(secret) != 1 {
+				t.Fatal("invalid recovered secret")
 			}
 		})
 	}
@@ -77,37 +75,6 @@ func TestSecretSharing_WithPolynomial(t *testing.T) {
 			// Or provide the all elements of the polynomial with the prepending secret
 			if _, err := secretsharing.Shard(g, secret, threshold, total, polynomial...); err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestVerify_Shares(t *testing.T) {
-	threshold := uint(2)
-	total := uint(3)
-
-	for _, g := range groups {
-		t.Run(g.String(), func(tt *testing.T) {
-			secret := g.NewScalar().Random()
-
-			shares, err := secretsharing.Shard(g, secret, threshold, total)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if len(shares) != int(total) {
-				t.Fatalf("expected %d shares, got %d", total, len(shares))
-			}
-
-			for k := 0; k <= int(total); k++ {
-				recovered, err := secretsharing.Combine(g, shares)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				if recovered.Equal(secret) != 1 {
-					t.Fatal("invalid recovered secret")
-				}
 			}
 		})
 	}

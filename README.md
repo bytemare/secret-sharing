@@ -7,13 +7,14 @@
   import "github.com/bytemare/secret-sharing"
 ```
 
-This package implements Shamir's Secret Sharing extended with Verifiable Secret Sharing over elliptic curve groups.
+This package implements Shamir's Secret Sharing extended with Feldman's Verifiable Secret Sharing over elliptic curve groups.
+It is aimed to be very easy to use.
 
 Secret sharing enables to _shard_ (or _split_) a secret key into an arbitrary number of shares _n_ and to recover that
-same key using only a subset _t+1_ of these key shares, where _t_ represents the threshold of allowed missing or
-compromised key shares. This allows for distributed usage of that sharded key useful in threshold schemes.
+same key with any subset of at minimum _t_ of these key shares in a _(t,n)_-threshold scheme.
 
-Note that the key distribution (sharding) algorithm used in this package is a _trusted dealer_ (i.e. centralised). 
+Note that the key distribution (sharding) algorithm used in this package is a _trusted dealer_ (i.e. centralised). If
+you need a truly decentralized key generation, you can use the [dkg package](https://github.com/bytemare/dkg).
 
 ## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 

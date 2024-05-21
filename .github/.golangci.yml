@@ -5,13 +5,16 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
+    - canonicalheader
     - containedctx
     - contextcheck
+    - copyloopvar
     - cyclop
     - decorder
     #- depguard
     - dogsled
     - dupl
+    - dupword
     - durationcheck
     - err113
     - errcheck
@@ -21,12 +24,16 @@ linters:
     - exhaustive
     - exhaustruct
     - exportloopref
+    - fatcontext
     - forbidigo
     - forcetypeassert
     - funlen
     - gci
+    - ginkgolinter
+    - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
+    - gochecksumtype
     - gocognit
     - goconst
     - gocritic
@@ -42,18 +49,23 @@ linters:
     - goprintffuncname
     - gosec
     - gosimple
+    - gosmopolitan
     - govet
     - grouper
     - importas
+    - inamedparam
     - ineffassign
     - interfacebloat
+    - intrange
     - ireturn
     - lll
     - loggercheck
     - maintidx
     - makezero
+    - mirror
     - misspell
-    - mnd
+    #- mnd
+    - musttag
     - nakedret
     - nestif
     - nilerr
@@ -64,18 +76,24 @@ linters:
     - nonamedreturns
     - nosprintfhostport
     - paralleltest
+    - perfsprint
     - prealloc
     - predeclared
     - promlinter
+    - protogetter
     - reassign
     - revive
     - rowserrcheck
+    - sloglint
+    - spancheck
     - sqlclosecheck
     - staticcheck
     - stylecheck
+    - tagalign
     - tagliatelle
     - tenv
     - testableexamples
+    - testifylint
     - testpackage
     - thelper
     - tparallel
@@ -89,10 +107,7 @@ linters:
     - whitespace
     - wrapcheck
     - wsl
-  presets:
-    - bugs
-    - unused
-  fast: false
+    - zerologlint
 
 linters-settings:
   dupl:
@@ -118,7 +133,7 @@ linters-settings:
     # Default: false
     custom-order: true
   gocognit:
-    min-complexity: 17
+    min-complexity: 15
   goconst:
     min-len: 2
     min-occurrences: 2
@@ -142,18 +157,12 @@ linters-settings:
     simplify: true
   goimports:
     local-prefixes: github.com/bytemare/secret-sharing
-  mnd:
-    checks:
-      - argument
-      - condition
-      - return
-      - assign
-    ignored-functions:
-      - 'secretsharing.Evaluate'
   gosimple:
     checks: [ "all" ]
   govet:
-    shadow: true
+    settings:
+      shadow:
+        strict: true
     disable-all: true
     enable:
       - asmdecl
@@ -198,13 +207,23 @@ linters-settings:
     tab-width: 4
   misspell:
     locale: US
+  mnd:
+    checks:
+      - argument
+      - case
+      - condition
+      - operation
+      - return
+      - assign
+    #ignored-functions:
+    #  - 'nist.setMapping'
+    #  - 'big.NewInt'
+    #  - 'hash2curve.HashToFieldXMD'
   nlreturn:
     block-size: 2
   prealloc:
     simple: false
     for-loops: true
-  unused:
-    check-exported: false
   whitespace:
     multi-if: false
     multi-func: false
@@ -225,7 +244,7 @@ issues:
   # But independently from this option we use default exclude patterns,
   # it can be disabled by `exclude-use-default: false`. To list all
   # excluded by default patterns execute `golangci-lint run --help`
-  exclude:
+  #exclude:
   #- "should have a package comment, unless it's in another file for this package"
   #- "do not define dynamic errors, use wrapped static errors instead"
   #- "missing cases in switch of type Group: maxID"
@@ -250,5 +269,7 @@ issues:
 run:
   tests: false
 
-#output:
-# format: github-actions
+output:
+  formats:
+    - format: github-actions
+  show-stats: true

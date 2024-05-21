@@ -80,6 +80,31 @@ func TestSecretSharing_WithPolynomial(t *testing.T) {
 	}
 }
 
+func TestCommitment(t *testing.T) {
+	threshold := uint(3)
+	total := uint(5)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(tt *testing.T) {
+			secret := g.NewScalar().Random()
+
+			shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			commitment := secretsharing.Commit(g, polynomial)
+
+			for i, keyshare := range shares {
+				pk := g.Base().Multiply(keyshare.SecretKey)
+				if !secretsharing.Verify(g, keyshare.Identifier, pk, commitment) {
+					t.Fatalf("invalid public key for shareholder %d", i)
+				}
+			}
+		})
+	}
+}
+
 func TestVerify_BadShares(t *testing.T) {
 	threshold := uint(2)
 	total := uint(3)
@@ -137,6 +162,15 @@ func TestVerify_BadCommitments(t *testing.T) {
 				if secretsharing.Verify(g, share.Identifier, pk, commitments) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
+			}
+
+			// Test without commitments
+			if secretsharing.Verify(g, nil, nil, nil) {
+				t.Fatalf("verification succeeded but shouldn't")
+			}
+
+			if secretsharing.Verify(g, nil, nil, make(secretsharing.Commitment, 0)) {
+				t.Fatalf("verification succeeded but shouldn't")
 			}
 		})
 	}

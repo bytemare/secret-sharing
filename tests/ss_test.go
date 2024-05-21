@@ -9,6 +9,7 @@
 package secretsharing_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -23,9 +24,22 @@ var groups = []group.Group{
 	group.Secp256k1,
 }
 
+func testCombine(g group.Group, secret *group.Scalar, shares ...*secretsharing.KeyShare) (error, bool) {
+	recovered, err := secretsharing.Combine(g, shares)
+	if err != nil {
+		return err, false
+	}
+
+	if recovered.Equal(secret) != 1 {
+		return errors.New("invalid recovered secret"), false
+	}
+
+	return nil, true
+}
+
 func TestSecretSharing(t *testing.T) {
-	threshold := uint(2)
-	total := uint(3)
+	threshold := uint(3)
+	total := uint(5)
 
 	for _, g := range groups {
 		t.Run(g.String(), func(tt *testing.T) {
@@ -40,17 +54,19 @@ func TestSecretSharing(t *testing.T) {
 				t.Fatalf("expected %d shares, got %d", total, len(shares))
 			}
 
-			subset := []*secretsharing.KeyShare{
-				shares[0], shares[1],
+			// it must not succeed with fewer than threshold shares
+			if err, _ = testCombine(g, secret, shares[0], shares[1]); err == nil {
+				t.Fatal("expected error on too few shares")
 			}
 
-			recovered, err := secretsharing.Combine(g, subset)
-			if err != nil {
-				t.Fatal(err)
+			// it must not succeed with threshold shares
+			if err, _ = testCombine(g, secret, shares[0], shares[1], shares[3]); err != nil {
+				t.Fatal("expected error on too few shares")
 			}
 
-			if recovered.Equal(secret) != 1 {
-				t.Fatal("invalid recovered secret")
+			// it must succeed with more than threshold shares
+			if err, _ = testCombine(g, secret, shares[1], shares[3], shares[0], shares[2]); err != nil {
+				t.Fatalf("unexpected error: %s", err)
 			}
 		})
 	}

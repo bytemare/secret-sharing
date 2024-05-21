@@ -81,8 +81,8 @@ func TestSecretSharing_WithPolynomial(t *testing.T) {
 }
 
 func TestCommitment(t *testing.T) {
-	threshold := uint(2)
-	total := uint(3)
+	threshold := uint(3)
+	total := uint(5)
 
 	for _, g := range groups {
 		t.Run(g.String(), func(tt *testing.T) {
@@ -162,6 +162,15 @@ func TestVerify_BadCommitments(t *testing.T) {
 				if secretsharing.Verify(g, share.Identifier, pk, commitments) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
+			}
+
+			// Test without commitments
+			if secretsharing.Verify(g, nil, nil, nil) {
+				t.Fatalf("verification succeeded but shouldn't")
+			}
+
+			if secretsharing.Verify(g, nil, nil, make(secretsharing.Commitment, 0)) {
+				t.Fatalf("verification succeeded but shouldn't")
 			}
 		})
 	}

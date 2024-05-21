@@ -7,7 +7,13 @@
   import "github.com/bytemare/secret-sharing"
 ```
 
-This package implements Verifiable Secret Sharing over Shamir's Secret Sharing with prime-order elliptic curve group scalars.
+This package implements Shamir's Secret Sharing extended with Verifiable Secret Sharing over elliptic curve groups.
+
+Secret sharing enables to _shard_ (or _split_) a secret key into an arbitrary number of shares _n_ and to recover that
+same key using only a subset _t+1_ of these key shares, where _t_ represents the threshold of allowed missing or
+compromised key shares. This allows for distributed usage of that sharded key useful in threshold schemes.
+
+Note that the key distribution (sharding) algorithm used in this package is a _trusted dealer_ (i.e. centralised). 
 
 ## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 

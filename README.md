@@ -14,7 +14,8 @@ Secret sharing enables to _shard_ (or _split_) a secret key into an arbitrary nu
 same key with any subset of at minimum _t_ of these key shares in a _(t,n)_-threshold scheme.
 
 Note that the key distribution (sharding) algorithm used in this package is a _trusted dealer_ (i.e. centralised). If
-you need a truly decentralized key generation, you can use the [dkg package](https://github.com/bytemare/dkg).
+you need a truly decentralized key generation, you can use the [dkg package](https://github.com/bytemare/dkg) which
+builds on this package.
 
 ## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 

@@ -28,11 +28,12 @@ func Commit(g group.Group, polynomial Polynomial) Commitment {
 
 // Verify allows verification of a participant's secret share given its public key and the VSS commitment
 // to the secret polynomial.
-func Verify(g group.Group, id *group.Scalar, pk *group.Element, coms Commitment) bool {
+func Verify(g group.Group, id uint64, pk *group.Element, coms Commitment) bool {
 	if len(coms) == 0 {
 		return false
 	}
 
+	ids := g.NewScalar().SetUInt64(id)
 	prime := coms[0].Copy()
 	one := g.NewScalar().One()
 	j := g.NewScalar().One()
@@ -40,13 +41,13 @@ func Verify(g group.Group, id *group.Scalar, pk *group.Element, coms Commitment)
 
 	switch {
 	// If id == 1 we can spare exponentiation and multiplications
-	case id.Equal(one) == 1:
+	case id == 1:
 		for _, com := range coms[1:] {
 			prime.Add(com)
 		}
 	case len(coms) >= 2:
 		// if there are elements left and since j == 1, we can spare one exponentiation
-		prime.Add(coms[1].Copy().Multiply(id))
+		prime.Add(coms[1].Copy().Multiply(ids))
 		j.Add(one)
 
 		i++
@@ -54,7 +55,7 @@ func Verify(g group.Group, id *group.Scalar, pk *group.Element, coms Commitment)
 		fallthrough
 	default:
 		for _, com := range coms[i:] {
-			prime.Add(com.Copy().Multiply(id.Copy().Pow(j)))
+			prime.Add(com.Copy().Multiply(ids.Copy().Pow(j)))
 			j.Add(one)
 		}
 	}

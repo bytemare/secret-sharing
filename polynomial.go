@@ -127,7 +127,7 @@ func (p Polynomial) hasDuplicates() bool {
 
 // Evaluate evaluates the polynomial p at point x using Horner's method.
 func (p Polynomial) Evaluate(x *group.Scalar) *group.Scalar {
-	// since value starts with 0, we can skip multiplying by x, and start from the end
+	// since value is an accumulator and starts with 0, we can skip multiplying by x, and start from the end
 	value := p[len(p)-1].Copy()
 	for i := len(p) - 2; i >= 0; i-- {
 		value.Multiply(x)
@@ -164,13 +164,13 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 func PolynomialInterpolateConstant(g group.Group, shares []*KeyShare) (*group.Scalar, error) {
 	xCoords := make(Polynomial, len(shares))
 	for i, share := range shares {
-		xCoords[i] = share.Identifier
+		xCoords[i] = g.NewScalar().SetUInt64(share.Identifier)
 	}
 
 	constant := g.NewScalar().Zero()
 
-	for _, share := range shares {
-		iv, err := xCoords.DeriveInterpolatingValue(g, share.Identifier)
+	for i, share := range shares {
+		iv, err := xCoords.DeriveInterpolatingValue(g, xCoords[i])
 		if err != nil {
 			return nil, err
 		}

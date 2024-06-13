@@ -59,9 +59,9 @@ func TestSecretSharing(t *testing.T) {
 				t.Fatal("expected error on too few shares")
 			}
 
-			// it must not succeed with threshold shares
+			// it must succeed with threshold shares
 			if err, _ = testCombine(g, secret, shares[0], shares[1], shares[3]); err != nil {
-				t.Fatal("expected error on too few shares")
+				t.Fatalf("unexpected error on threshold number of shares: %v", err)
 			}
 
 			// it must succeed with more than threshold shares
@@ -181,11 +181,11 @@ func TestVerify_BadCommitments(t *testing.T) {
 			}
 
 			// Test without commitments
-			if secretsharing.Verify(g, nil, nil, nil) {
+			if secretsharing.Verify(g, 0, nil, nil) {
 				t.Fatalf("verification succeeded but shouldn't")
 			}
 
-			if secretsharing.Verify(g, nil, nil, make(secretsharing.Commitment, 0)) {
+			if secretsharing.Verify(g, 0, nil, make(secretsharing.Commitment, 0)) {
 				t.Fatalf("verification succeeded but shouldn't")
 			}
 		})
@@ -371,7 +371,7 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 	for _, g := range groups {
 		badShare := []*secretsharing.KeyShare{
 			{
-				Identifier: nil,
+				Identifier: 0,
 				SecretKey:  nil,
 			},
 		}
@@ -385,18 +385,8 @@ func TestCombine_BadIdentifiers_Nil(t *testing.T) {
 	expected := "the polynomial has a nil coefficient"
 
 	for _, g := range groups {
-
-		badShare := []*secretsharing.KeyShare{
-			{
-				Identifier: g.NewScalar().One(),
-				SecretKey:  g.NewScalar().Random(),
-			},
-			{
-				Identifier: nil,
-				SecretKey:  g.NewScalar().Random(),
-			},
-		}
-		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
+		xCoords := secretsharing.Polynomial{g.NewScalar().SetUInt64(1), nil}
+		if _, err := xCoords.DeriveInterpolatingValue(g, xCoords[0]); err == nil || err.Error() != expected {
 			t.Fatalf("expected error %q, got %q", expected, err)
 		}
 	}
@@ -409,11 +399,11 @@ func TestCombine_BadIdentifiers_Zero(t *testing.T) {
 
 		badShare := []*secretsharing.KeyShare{
 			{
-				Identifier: g.NewScalar().One(),
+				Identifier: 1,
 				SecretKey:  g.NewScalar().Random(),
 			},
 			{
-				Identifier: g.NewScalar().Zero(),
+				Identifier: 0,
 				SecretKey:  g.NewScalar().Random(),
 			},
 		}
@@ -430,11 +420,11 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 
 		badShare := []*secretsharing.KeyShare{
 			{
-				Identifier: g.NewScalar().One(),
+				Identifier: 1,
 				SecretKey:  g.NewScalar().Random(),
 			},
 			{
-				Identifier: g.NewScalar().One(),
+				Identifier: 1,
 				SecretKey:  g.NewScalar().Random(),
 			},
 		}

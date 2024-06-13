@@ -11,7 +11,6 @@ package secretsharing
 
 import (
 	"errors"
-	"math/big"
 
 	group "github.com/bytemare/crypto"
 )
@@ -26,11 +25,11 @@ var (
 
 // KeyShare identifies the sharded key share for a given participant.
 type KeyShare struct {
-	// Identifier uniquely identifies a key share within secret sharing instance.
-	Identifier *group.Scalar
-
 	// SecretKey is the participant's secret share.
 	SecretKey *group.Scalar
+
+	// Identifier uniquely identifies a key share within secret sharing instance.
+	Identifier uint64
 }
 
 // Shard splits the secret into total shares, recoverable by a subset of threshold shares. This is the function you
@@ -76,10 +75,10 @@ func ShardReturnPolynomial(
 	// Evaluate the polynomial for each point x=1,...,n
 	secretKeyShares := make([]*KeyShare, total)
 
-	for i := uint(1); i <= total; i++ {
-		id := integerToScalar(secret.Copy(), i)
+	for i := uint64(1); i <= uint64(total); i++ {
+		id := g.NewScalar().SetUInt64(i)
 		yi := p.Evaluate(id)
-		secretKeyShares[i-1] = &KeyShare{id, yi}
+		secretKeyShares[i-1] = &KeyShare{Identifier: i, SecretKey: yi}
 	}
 
 	return secretKeyShares, p, nil
@@ -119,13 +118,4 @@ func makePolynomial(g group.Group, threshold uint, polynomial ...*group.Scalar) 
 	}
 
 	return p, nil
-}
-
-// integerToScalar creates a group.Scalar given an int.
-func integerToScalar(target *group.Scalar, i uint) *group.Scalar {
-	if err := target.SetInt(big.NewInt(int64(i))); err != nil {
-		panic(err)
-	}
-
-	return target
 }

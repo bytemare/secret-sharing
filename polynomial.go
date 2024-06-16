@@ -52,11 +52,8 @@ func copyPolynomial(dst, src Polynomial) error {
 	return nil
 }
 
-func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
-	if id == nil || id.IsZero() {
-		return errPolyXIsZero
-	}
-
+// Verify returns an appropriate error if the polynomial has a nil or 0 coefficient, or duplicates.
+func (p Polynomial) Verify() error {
 	if p.hasNil() {
 		return errPolyHasNilCoeff
 	}
@@ -65,15 +62,23 @@ func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
 		return errPolyHasZeroCoeff
 	}
 
-	if !p.has(id) {
-		return errPolyCoeffInexistant
-	}
-
 	if p.hasDuplicates() {
 		return errPolyHasDuplicates
 	}
 
 	return nil
+}
+
+func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
+	if id == nil || id.IsZero() {
+		return errPolyXIsZero
+	}
+
+	if !p.has(id) {
+		return errPolyCoeffInexistant
+	}
+
+	return p.Verify()
 }
 
 // has returns whether s is a coefficient of the polynomial.

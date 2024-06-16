@@ -74,11 +74,15 @@ func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
 		return errPolyXIsZero
 	}
 
+	if err := p.Verify(); err != nil {
+		return err
+	}
+
 	if !p.has(id) {
 		return errPolyCoeffInexistant
 	}
 
-	return p.Verify()
+	return nil
 }
 
 // has returns whether s is a coefficient of the polynomial.

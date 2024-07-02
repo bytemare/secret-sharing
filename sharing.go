@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-ID: MIT
 //
 // Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
 //
@@ -23,13 +23,32 @@ var (
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
 )
 
-// KeyShare identifies the sharded key share for a given participant.
-type KeyShare struct {
-	// SecretKey is the participant's secret share.
-	SecretKey *group.Scalar
+// The KeyShare interface enables to use functions in this package with compatible key shares.
+type KeyShare interface {
+	// Identifier returns the identity for this share.
+	Identifier() uint64
 
-	// Identifier uniquely identifies a key share within secret sharing instance.
-	Identifier uint64
+	// SecretKey returns the participant's secret share.
+	SecretKey() *group.Scalar
+}
+
+// Share identifies the sharded key share for a given participant.
+type Share struct {
+	// Secret is the participant's secret share.
+	Secret *group.Scalar
+
+	// ID uniquely identifies a key share within secret sharing instance.
+	ID uint64
+}
+
+// Identifier returns the identity for this share.
+func (s *Share) Identifier() uint64 {
+	return s.ID
+}
+
+// SecretKey returns the participant's secret share.
+func (s *Share) SecretKey() *group.Scalar {
+	return s.Secret
 }
 
 // Shard splits the secret into total shares, recoverable by a subset of threshold shares. This is the function you
@@ -39,7 +58,7 @@ func Shard(
 	secret *group.Scalar,
 	threshold, total uint,
 	polynomial ...*group.Scalar,
-) ([]*KeyShare, error) {
+) ([]*Share, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, total, polynomial...)
 
 	for _, pi := range p {
@@ -56,7 +75,7 @@ func ShardReturnPolynomial(
 	secret *group.Scalar,
 	threshold, total uint,
 	polynomial ...*group.Scalar,
-) ([]*KeyShare, Polynomial, error) {
+) ([]*Share, Polynomial, error) {
 	if total < threshold {
 		return nil, nil, errTooFewShares
 	}
@@ -73,19 +92,19 @@ func ShardReturnPolynomial(
 	p[0] = secret.Copy()
 
 	// Evaluate the polynomial for each point x=1,...,n
-	secretKeyShares := make([]*KeyShare, total)
+	secretKeyShares := make([]*Share, total)
 
 	for i := uint64(1); i <= uint64(total); i++ {
 		id := g.NewScalar().SetUInt64(i)
 		yi := p.Evaluate(id)
-		secretKeyShares[i-1] = &KeyShare{Identifier: i, SecretKey: yi}
+		secretKeyShares[i-1] = &Share{ID: i, Secret: yi}
 	}
 
 	return secretKeyShares, p, nil
 }
 
 // Combine recovers the constant secret by combining the key shares.
-func Combine(g group.Group, shares []*KeyShare) (*group.Scalar, error) {
+func Combine(g group.Group, shares []KeyShare) (*group.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, errNoShares
 	}

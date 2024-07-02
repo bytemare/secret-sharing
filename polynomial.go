@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-ID: MIT
 //
 // Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
 //
@@ -161,10 +161,10 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 
 // PolynomialInterpolateConstant recovers the constant term of the interpolating polynomial defined by the set of
 // key shares.
-func PolynomialInterpolateConstant(g group.Group, shares []*KeyShare) (*group.Scalar, error) {
+func PolynomialInterpolateConstant(g group.Group, shares []KeyShare) (*group.Scalar, error) {
 	xCoords := make(Polynomial, len(shares))
 	for i, share := range shares {
-		xCoords[i] = g.NewScalar().SetUInt64(share.Identifier)
+		xCoords[i] = g.NewScalar().SetUInt64(share.Identifier())
 	}
 
 	constant := g.NewScalar().Zero()
@@ -175,7 +175,7 @@ func PolynomialInterpolateConstant(g group.Group, shares []*KeyShare) (*group.Sc
 			return nil, err
 		}
 
-		delta := share.SecretKey.Copy().Multiply(iv)
+		delta := share.SecretKey().Copy().Multiply(iv)
 		constant.Add(delta)
 	}
 

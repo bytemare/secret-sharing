@@ -24,7 +24,7 @@ var groups = []group.Group{
 	group.Secp256k1,
 }
 
-func testCombine(g group.Group, secret *group.Scalar, shares ...*secretsharing.KeyShare) (error, bool) {
+func testCombine(g group.Group, secret *group.Scalar, shares ...secretsharing.KeyShare) (error, bool) {
 	recovered, err := secretsharing.Combine(g, shares)
 	if err != nil {
 		return err, false
@@ -112,8 +112,8 @@ func TestCommitment(t *testing.T) {
 			commitment := secretsharing.Commit(g, polynomial)
 
 			for i, keyshare := range shares {
-				pk := g.Base().Multiply(keyshare.SecretKey)
-				if !secretsharing.Verify(g, keyshare.Identifier, pk, commitment) {
+				pk := g.Base().Multiply(keyshare.Secret)
+				if !secretsharing.Verify(g, keyshare.ID, pk, commitment) {
 					t.Fatalf("invalid public key for shareholder %d", i)
 				}
 			}
@@ -138,13 +138,13 @@ func TestVerify_BadShares(t *testing.T) {
 
 			// Alter the shares
 			for _, share := range shares {
-				share.SecretKey.Random()
+				share.Secret.Random()
 			}
 
 			// Verify
 			for _, share := range shares {
-				pk := g.Base().Multiply(share.SecretKey)
-				if secretsharing.Verify(g, share.Identifier, pk, commitments) {
+				pk := g.Base().Multiply(share.Secret)
+				if secretsharing.Verify(g, share.ID, pk, commitments) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
 			}
@@ -174,8 +174,8 @@ func TestVerify_BadCommitments(t *testing.T) {
 
 			// Verify
 			for _, share := range shares {
-				pk := g.Base().Multiply(share.SecretKey)
-				if secretsharing.Verify(g, share.Identifier, pk, commitments) {
+				pk := g.Base().Multiply(share.Secret)
+				if secretsharing.Verify(g, share.ID, pk, commitments) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
 			}
@@ -232,8 +232,8 @@ func testBadPolynomial(g group.Group, threshold, max uint, p secretsharing.Polyn
 
 	// Verify
 	for id, share := range shares {
-		pk := g.Base().Multiply(share.SecretKey)
-		if secretsharing.Verify(g, share.Identifier, pk, commitments) {
+		pk := g.Base().Multiply(share.Secret)
+		if secretsharing.Verify(g, share.ID, pk, commitments) {
 			return fmt.Errorf("verification of %d failed", id)
 		}
 	}
@@ -348,16 +348,16 @@ func TestCombine_TooFewShares(t *testing.T) {
 		}
 
 		// Zero shares
-		var shares []*secretsharing.KeyShare
+		var shares []secretsharing.KeyShare
 		if _, err := secretsharing.Combine(g, shares); err == nil || err.Error() != expected {
 			t.Fatalf("expected error %q, got %q", expected, err)
 		}
 
 		// Low shares - not tested since we don't keep trace of the threshold anymore
-		//shares = []*secretsharing.KeyShare{
+		//shares = []*secretsharing.Share{
 		//	{
-		//		Identifier: nil,
-		//		SecretKey:  nil,
+		//		ID: nil,
+		//		Secret:  nil,
 		//	}}
 		//if _, err := secretsharing.Combine(g, shares); err == nil || err.Error() != expected {
 		//	t.Fatalf("expected error %q, got %q", expected, err)
@@ -369,10 +369,10 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 	expected := "identifier for interpolation is nil or zero"
 
 	for _, g := range groups {
-		badShare := []*secretsharing.KeyShare{
-			{
-				Identifier: 0,
-				SecretKey:  nil,
+		badShare := []secretsharing.KeyShare{
+			&secretsharing.Share{
+				ID:     0,
+				Secret: nil,
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
@@ -397,14 +397,14 @@ func TestCombine_BadIdentifiers_Zero(t *testing.T) {
 
 	for _, g := range groups {
 
-		badShare := []*secretsharing.KeyShare{
-			{
-				Identifier: 1,
-				SecretKey:  g.NewScalar().Random(),
+		badShare := []secretsharing.KeyShare{
+			&secretsharing.Share{
+				ID:     1,
+				Secret: g.NewScalar().Random(),
 			},
-			{
-				Identifier: 0,
-				SecretKey:  g.NewScalar().Random(),
+			&secretsharing.Share{
+				ID:     0,
+				Secret: g.NewScalar().Random(),
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
@@ -418,14 +418,14 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 
 	for _, g := range groups {
 
-		badShare := []*secretsharing.KeyShare{
-			{
-				Identifier: 1,
-				SecretKey:  g.NewScalar().Random(),
+		badShare := []secretsharing.KeyShare{
+			&secretsharing.Share{
+				ID:     1,
+				Secret: g.NewScalar().Random(),
 			},
-			{
-				Identifier: 1,
-				SecretKey:  g.NewScalar().Random(),
+			&secretsharing.Share{
+				ID:     1,
+				Secret: g.NewScalar().Random(),
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {

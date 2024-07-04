@@ -34,7 +34,7 @@ func ExampleShardAndCombine() {
 	}
 
 	// Assemble a subset of shares to recover the secret. We must use [threshold+1] or more shares.
-	subset := []*secretsharing.KeyShare{
+	subset := []secretsharing.KeyShare{
 		shares[5], shares[0], shares[3],
 	}
 
@@ -77,10 +77,10 @@ func ExampleShardAndVerify() {
 	// the party's public key.
 	for _, keyshare := range shares {
 		// Let's derive the public key. Other parties won't have access to the private key, naturally.
-		publicKey := g.Base().Multiply(keyshare.SecretKey)
+		publicKey := g.Base().Multiply(keyshare.SecretKey())
 
 		// Verify that the keys hare's public key is consistent with the commitment.
-		if !secretsharing.Verify(g, keyshare.Identifier, publicKey, commitment) {
+		if !secretsharing.Verify(g, keyshare.Identifier(), publicKey, commitment) {
 			panic("invalid public key for shareholder")
 		}
 	}

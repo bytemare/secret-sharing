@@ -2,7 +2,7 @@ module github.com/bytemare/secret-sharing
 
 go 1.22.2
 
-require github.com/bytemare/crypto v0.7.0
+require github.com/bytemare/crypto v0.7.4
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

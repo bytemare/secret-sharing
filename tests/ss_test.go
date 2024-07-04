@@ -1,4 +1,4 @@
-// SPDX-License-ID: MIT
+// SPDX-License-Identifier: MIT
 //
 // Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
 //

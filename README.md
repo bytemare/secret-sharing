@@ -1,5 +1,5 @@
 # Secure Secret Sharing
-[![secret-sharing](https://github.com/bytemare/secret-sharing/actions/workflows/ci.yml/badge.svg)](https://github.com/bytemare/secret-sharing/actions/workflows/ci.yml)
+[![secret-sharing](https://github.com/bytemare/secret-sharing/actions/workflows/code-scan.yml/badge.svg)](https://github.com/bytemare/secret-sharing/actions/workflows/code-scan.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 [![codecov](https://codecov.io/gh/bytemare/secret-sharing/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/bytemare/secret-sharing)
 

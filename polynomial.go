@@ -25,11 +25,32 @@ var (
 
 // Polynomial over scalars, represented as a list of t+1 coefficients, where t is the threshold.
 // The constant term is in the first position and the highest degree coefficient is in the last position.
+// All operations on the polynomial's coefficient are done modulo the scalar's group order.
 type Polynomial []*group.Scalar
 
 // NewPolynomial returns a slice of Scalars with the capacity to hold the desired coefficients.
 func NewPolynomial(coefficients uint) Polynomial {
 	return make(Polynomial, coefficients)
+}
+
+// NewPolynomialFromIntegers returns a Polynomial from a slice of uint64.
+func NewPolynomialFromIntegers(g group.Group, ints []uint64) Polynomial {
+	polynomial := make(Polynomial, len(ints))
+	for i, v := range ints {
+		polynomial[i] = g.NewScalar().SetUInt64(v)
+	}
+
+	return polynomial
+}
+
+// NewPolynomialFromListFunc returns a Polynomial from the uint64 returned by f applied on each element of the slice.
+func NewPolynomialFromListFunc[S ~[]E, E any](g group.Group, s S, f func(E) *group.Scalar) Polynomial {
+	polynomial := make(Polynomial, len(s))
+	for i, v := range s {
+		polynomial[i] = g.NewScalar().Set(f(v))
+	}
+
+	return polynomial
 }
 
 func copyPolynomial(dst, src Polynomial) error {
@@ -171,10 +192,9 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 // PolynomialInterpolateConstant recovers the constant term of the interpolating polynomial defined by the set of
 // key shares.
 func PolynomialInterpolateConstant(g group.Group, shares []KeyShare) (*group.Scalar, error) {
-	xCoords := make(Polynomial, len(shares))
-	for i, share := range shares {
-		xCoords[i] = g.NewScalar().SetUInt64(share.Identifier())
-	}
+	xCoords := NewPolynomialFromListFunc(g, shares, func(share KeyShare) *group.Scalar {
+		return g.NewScalar().SetUInt64(share.Identifier())
+	})
 
 	constant := g.NewScalar().Zero()
 

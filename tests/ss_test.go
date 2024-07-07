@@ -72,6 +72,39 @@ func TestSecretSharing(t *testing.T) {
 	}
 }
 
+func TestNewPolynomial_Ints(t *testing.T) {
+	total := uint(3)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(tt *testing.T) {
+			pRef := secretsharing.NewPolynomial(total)
+			ints := make([]uint64, total)
+			shares := make([]*secretsharing.Share, total)
+			for i := range total {
+				i64 := uint64(i + 1)
+				pRef[i] = g.NewScalar().SetUInt64(i64)
+				ints[i] = i64
+				shares[i] = &secretsharing.Share{ID: i64}
+			}
+
+			pInts := secretsharing.NewPolynomialFromIntegers(g, ints)
+			pShares := secretsharing.NewPolynomialFromListFunc(
+				g,
+				shares,
+				func(share *secretsharing.Share) *group.Scalar {
+					return g.NewScalar().SetUInt64(share.ID)
+				},
+			)
+
+			for i := range total {
+				if pRef[i].Equal(pInts[i]) != 1 || pRef[i].Equal(pShares[i]) != 1 {
+					t.Fatal("expected equality")
+				}
+			}
+		})
+	}
+}
+
 func TestSecretSharing_WithPolynomial(t *testing.T) {
 	threshold := uint(2)
 	total := uint(3)

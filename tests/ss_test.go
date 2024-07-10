@@ -564,7 +564,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 		}
 
-		// Second element of commitment is nil
+		// Second element of commitment is nil and id = 1
 		c := commitment[1].Copy()
 		commitment[1] = nil
 		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
@@ -573,10 +573,19 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 		}
 		commitment[1] = c
 
+		// Second element of commitment is nil
+		c = commitment[1].Copy()
+		commitment[1] = nil
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+		commitment[1] = c
+
 		// Third element of the commitment is nil
 		c = commitment[2].Copy()
 		commitment[2] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
 			err.Error() != errCommitmentNilElement.Error() {
 			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 		}
@@ -585,7 +594,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 		// Some other element of the commitment is nil
 		c = commitment[4].Copy()
 		commitment[4] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
 			err.Error() != errCommitmentNilElement.Error() {
 			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 		}

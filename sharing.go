@@ -23,8 +23,8 @@ var (
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
 )
 
-// The KeyShare interface enables to use functions in this package with compatible key shares.
-type KeyShare interface {
+// The Share interface enables to use functions in this package with compatible key shares.
+type Share interface {
 	// Identifier returns the identity for this share.
 	Identifier() uint64
 
@@ -32,50 +32,78 @@ type KeyShare interface {
 	SecretKey() *group.Scalar
 }
 
-// Share identifies the sharded key share for a given participant.
-type Share struct {
-	// Secret is the participant's secret share.
-	Secret *group.Scalar
+// PublicKeyShare specifies the public key of a participant identified with ID. This can be useful to keep a registry of
+// participants.
+type PublicKeyShare struct {
+	// The PublicKey of Secret belonging to the participant.
+	PublicKey *group.Element
 
-	// ID uniquely identifies a key share within secret sharing instance.
+	// ID of the participant.
 	ID uint64
 }
 
+// KeyShare holds the secret and public key share for a given participant.
+type KeyShare struct {
+	// The Secret of a participant (or secret share).
+	Secret *group.Scalar
+
+	// PublicKeyShare is the public part of the participant's key share.
+	*PublicKeyShare
+}
+
 // Identifier returns the identity for this share.
-func (s *Share) Identifier() uint64 {
+func (s KeyShare) Identifier() uint64 {
 	return s.ID
 }
 
 // SecretKey returns the participant's secret share.
-func (s *Share) SecretKey() *group.Scalar {
+func (s KeyShare) SecretKey() *group.Scalar {
 	return s.Secret
 }
 
-// Shard splits the secret into total shares, recoverable by a subset of threshold shares. This is the function you
-// should probably use.
+// Public returns the public key share and identifier corresponding to the secret key share.
+func (s KeyShare) Public() *PublicKeyShare {
+	return s.PublicKeyShare
+}
+
+// Shard splits the secret into total shares, recoverable by a subset of threshold shares.
+// To use Verifiable Secret Sharing, use ShardReturnPolynomial and commit to the polynomial with Commit.
 func Shard(
 	g group.Group,
 	secret *group.Scalar,
 	threshold, total uint,
 	polynomial ...*group.Scalar,
-) ([]*Share, error) {
+) ([]*KeyShare, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, total, polynomial...)
 
 	for _, pi := range p {
-		pi.Zero() // zero-out the polynomial, juste to be sure
+		pi.Zero() // zero-out the polynomial, just to be sure.
 	}
 
 	return shares, err
 }
 
+func makeKeyShare(g group.Group, id uint64, p Polynomial) *KeyShare {
+	ids := g.NewScalar().SetUInt64(id)
+	yi := p.Evaluate(ids)
+
+	return &KeyShare{
+		Secret: yi,
+		PublicKeyShare: &PublicKeyShare{
+			PublicKey: g.Base().Multiply(yi),
+			ID:        id,
+		},
+	}
+}
+
 // ShardReturnPolynomial splits the secret into total shares, recoverable by a subset of threshold shares, and returns
-// the constructed polynomial. Unless you know what you are doing, you probably want to use Shard() instead.
+// the constructed secret polynomial. To use Verifiable Secret Sharing, call Commit with the returned polynomial.
 func ShardReturnPolynomial(
 	g group.Group,
 	secret *group.Scalar,
 	threshold, total uint,
 	polynomial ...*group.Scalar,
-) ([]*Share, Polynomial, error) {
+) ([]*KeyShare, Polynomial, error) {
 	if total < threshold {
 		return nil, nil, errTooFewShares
 	}
@@ -92,19 +120,34 @@ func ShardReturnPolynomial(
 	p[0] = secret.Copy()
 
 	// Evaluate the polynomial for each point x=1,...,n
-	secretKeyShares := make([]*Share, total)
+	secretKeyShares := make([]*KeyShare, total)
 
 	for i := uint64(1); i <= uint64(total); i++ {
-		id := g.NewScalar().SetUInt64(i)
-		yi := p.Evaluate(id)
-		secretKeyShares[i-1] = &Share{ID: i, Secret: yi}
+		secretKeyShares[i-1] = makeKeyShare(g, i, p)
 	}
 
 	return secretKeyShares, p, nil
 }
 
+// KeyShares is a set of KeyShares.
+type KeyShares []*KeyShare
+
 // Combine recovers the constant secret by combining the key shares.
-func Combine(g group.Group, shares []KeyShare) (*group.Scalar, error) {
+func (k KeyShares) Combine(g group.Group) (*group.Scalar, error) {
+	if len(k) == 0 {
+		return nil, errNoShares
+	}
+
+	s := make([]Share, len(k))
+	for i, ks := range k {
+		s[i] = ks
+	}
+
+	return CombineShares(g, s)
+}
+
+// CombineShares recovers the constant secret by combining the key shares using the Share interface.
+func CombineShares(g group.Group, shares []Share) (*group.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, errNoShares
 	}

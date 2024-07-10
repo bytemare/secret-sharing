@@ -24,10 +24,24 @@ var groups = []group.Group{
 	group.Secp256k1,
 }
 
-func testCombine(g group.Group, secret *group.Scalar, shares ...secretsharing.KeyShare) (error, bool) {
-	recovered, err := secretsharing.Combine(g, shares)
+func testCombine(g group.Group, secret *group.Scalar, shares secretsharing.KeyShares) (error, bool) {
+	recovered1, err := shares.Combine(g)
 	if err != nil {
 		return err, false
+	}
+
+	s := make([]secretsharing.Share, len(shares))
+	for i, k := range shares {
+		s[i] = k
+	}
+
+	recovered, err := secretsharing.CombineShares(g, s)
+	if err != nil {
+		return err, false
+	}
+
+	if recovered1.Equal(recovered) != 1 {
+		return errors.New("combine returned different results"), false
 	}
 
 	if recovered.Equal(secret) != 1 {
@@ -55,17 +69,17 @@ func TestSecretSharing(t *testing.T) {
 			}
 
 			// it must not succeed with fewer than threshold shares
-			if err, _ = testCombine(g, secret, shares[0], shares[1]); err == nil {
+			if err, _ = testCombine(g, secret, shares[:threshold-1]); err == nil {
 				t.Fatal("expected error on too few shares")
 			}
 
 			// it must succeed with threshold shares
-			if err, _ = testCombine(g, secret, shares[0], shares[1], shares[3]); err != nil {
+			if err, _ = testCombine(g, secret, shares[:threshold]); err != nil {
 				t.Fatalf("unexpected error on threshold number of shares: %v", err)
 			}
 
 			// it must succeed with more than threshold shares
-			if err, _ = testCombine(g, secret, shares[1], shares[3], shares[0], shares[2]); err != nil {
+			if err, _ = testCombine(g, secret, shares[:total]); err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
 		})
@@ -79,19 +93,19 @@ func TestNewPolynomial_Ints(t *testing.T) {
 		t.Run(g.String(), func(tt *testing.T) {
 			pRef := secretsharing.NewPolynomial(total)
 			ints := make([]uint64, total)
-			shares := make([]*secretsharing.Share, total)
+			shares := make([]*secretsharing.KeyShare, total)
 			for i := range total {
 				i64 := uint64(i + 1)
 				pRef[i] = g.NewScalar().SetUInt64(i64)
 				ints[i] = i64
-				shares[i] = &secretsharing.Share{ID: i64}
+				shares[i] = &secretsharing.KeyShare{PublicKeyShare: &secretsharing.PublicKeyShare{ID: i64}}
 			}
 
 			pInts := secretsharing.NewPolynomialFromIntegers(g, ints)
 			pShares := secretsharing.NewPolynomialFromListFunc(
 				g,
 				shares,
-				func(share *secretsharing.Share) *group.Scalar {
+				func(share *secretsharing.KeyShare) *group.Scalar {
 					return g.NewScalar().SetUInt64(share.ID)
 				},
 			)
@@ -376,25 +390,15 @@ func TestCombine_TooFewShares(t *testing.T) {
 
 	for _, g := range groups {
 		// Nil shares
-		if _, err := secretsharing.Combine(g, nil); err == nil || err.Error() != expected {
+		if _, err := secretsharing.CombineShares(g, nil); err == nil || err.Error() != expected {
 			t.Fatalf("expected error %q, got %q", expected, err)
 		}
 
 		// Zero shares
-		var shares []secretsharing.KeyShare
-		if _, err := secretsharing.Combine(g, shares); err == nil || err.Error() != expected {
+		var shares []secretsharing.Share
+		if _, err := secretsharing.CombineShares(g, shares); err == nil || err.Error() != expected {
 			t.Fatalf("expected error %q, got %q", expected, err)
 		}
-
-		// Low shares - not tested since we don't keep trace of the threshold anymore
-		//shares = []*secretsharing.Share{
-		//	{
-		//		ID: nil,
-		//		Secret:  nil,
-		//	}}
-		//if _, err := secretsharing.Combine(g, shares); err == nil || err.Error() != expected {
-		//	t.Fatalf("expected error %q, got %q", expected, err)
-		//}
 	}
 }
 
@@ -402,10 +406,10 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 	expected := "identifier for interpolation is nil or zero"
 
 	for _, g := range groups {
-		badShare := []secretsharing.KeyShare{
-			&secretsharing.Share{
-				ID:     0,
-				Secret: nil,
+		badShare := []secretsharing.Share{
+			&secretsharing.KeyShare{
+				Secret:         nil,
+				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 0},
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
@@ -430,14 +434,14 @@ func TestCombine_BadIdentifiers_Zero(t *testing.T) {
 
 	for _, g := range groups {
 
-		badShare := []secretsharing.KeyShare{
-			&secretsharing.Share{
-				ID:     1,
-				Secret: g.NewScalar().Random(),
+		badShare := []secretsharing.Share{
+			&secretsharing.KeyShare{
+				Secret:         g.NewScalar().Random(),
+				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
 			},
-			&secretsharing.Share{
-				ID:     0,
-				Secret: g.NewScalar().Random(),
+			&secretsharing.KeyShare{
+				Secret:         g.NewScalar().Random(),
+				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 0},
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
@@ -450,19 +454,100 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 	expected := "the polynomial has duplicate coefficients"
 
 	for _, g := range groups {
-
-		badShare := []secretsharing.KeyShare{
-			&secretsharing.Share{
-				ID:     1,
-				Secret: g.NewScalar().Random(),
+		badShare := []secretsharing.Share{
+			&secretsharing.KeyShare{
+				Secret:         g.NewScalar().Random(),
+				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
 			},
-			&secretsharing.Share{
-				ID:     1,
-				Secret: g.NewScalar().Random(),
+			&secretsharing.KeyShare{
+				Secret:         g.NewScalar().Random(),
+				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
 			},
 		}
 		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
 			t.Fatalf("expected error %q, got %q", expected, err)
+		}
+	}
+}
+
+func TestPubKeyForCommitment(t *testing.T) {
+	threshold := uint(3)    // threshold is the minimum amount of necessary shares to recombine the secret
+	shareholders := uint(7) // the total amount of key share-holders
+
+	for _, g := range groups {
+		// This is the global secret to be shared
+		secret := g.NewScalar().Random()
+
+		// Shard the secret into shares
+		shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
+		if err != nil {
+			panic(err)
+		}
+
+		commitment := secretsharing.Commit(g, polynomial)
+
+		// No expected error
+		pk, err := secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if pk.Equal(shares[0].PublicKey) != 1 {
+			t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
+		}
+
+		if !secretsharing.Verify(g, shares[0].ID, shares[0].PublicKey, commitment) {
+			t.Fatal("unexpected public key")
+		}
+	}
+}
+
+func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
+	errCommitmentNilElement := errors.New("commitment has nil element")
+	threshold := uint(4)
+	shareholders := uint(7)
+
+	for _, g := range groups {
+		secret := g.NewScalar().Random()
+		shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
+		if err != nil {
+			panic(err)
+		}
+
+		commitment := secretsharing.Commit(g, polynomial)
+
+		// No commitment provided
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, nil); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+
+		// Provided commitment is empty
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{}); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+
+		// First element of commitment is nil
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{nil}); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+
+		// Second element of commitment is nil
+		c := commitment[1]
+		commitment[1] = nil
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+		commitment[1] = c
+
+		// Some other element of the commitment is nil
+		commitment[3] = nil
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 		}
 	}
 }

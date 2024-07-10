@@ -191,8 +191,8 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 
 // PolynomialInterpolateConstant recovers the constant term of the interpolating polynomial defined by the set of
 // key shares.
-func PolynomialInterpolateConstant(g group.Group, shares []KeyShare) (*group.Scalar, error) {
-	xCoords := NewPolynomialFromListFunc(g, shares, func(share KeyShare) *group.Scalar {
+func PolynomialInterpolateConstant(g group.Group, shares []Share) (*group.Scalar, error) {
+	xCoords := NewPolynomialFromListFunc(g, shares, func(share Share) *group.Scalar {
 		return g.NewScalar().SetUInt64(share.Identifier())
 	})
 

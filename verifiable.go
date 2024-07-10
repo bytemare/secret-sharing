@@ -9,13 +9,17 @@
 package secretsharing
 
 import (
+	"errors"
+
 	group "github.com/bytemare/crypto"
 )
+
+var errCommitmentNilElement = errors.New("commitment has nil element")
 
 // Commitment is the tuple defining a Verifiable Secret Sharing Commitment.
 type Commitment []*group.Element
 
-// Commit builds a VSS vector commitment to each of the coefficients
+// Commit builds a Verifiable Secret Sharing vector Commitment to each of the coefficients
 // (of threshold length which uniquely determines the polynomial).
 func Commit(g group.Group, polynomial Polynomial) Commitment {
 	coms := make(Commitment, len(polynomial))
@@ -26,39 +30,63 @@ func Commit(g group.Group, polynomial Polynomial) Commitment {
 	return coms
 }
 
-// Verify allows verification of a participant's secret share given its public key and the VSS commitment
+// Verify allows verification of participant id's public key given its public key and the VSS commitment
 // to the secret polynomial.
-func Verify(g group.Group, id uint64, pk *group.Element, coms Commitment) bool {
-	if len(coms) == 0 {
+func Verify(g group.Group, id uint64, pk *group.Element, coms []*group.Element) bool {
+	v, err := PubKeyForCommitment(g, id, coms)
+	if err != nil {
 		return false
 	}
 
-	ids := g.NewScalar().SetUInt64(id)
-	prime := coms[0].Copy()
-	one := g.NewScalar().One()
-	j := g.NewScalar().One()
-	i := 1
+	return pk.Equal(v) == 1
+}
+
+// PubKeyForCommitment computes the public key corresponding to the commitment of participant id.
+func PubKeyForCommitment(g group.Group, id uint64, commitment []*group.Element) (*group.Element, error) {
+	if len(commitment) == 0 || commitment[0] == nil {
+		return nil, errCommitmentNilElement
+	}
+
+	pk := commitment[0].Copy()
 
 	switch {
 	// If id == 1 we can spare exponentiation and multiplications
 	case id == 1:
-		for _, com := range coms[1:] {
-			prime.Add(com)
-		}
-	case len(coms) >= 2:
-		// if there are elements left and since j == 1, we can spare one exponentiation
-		prime.Add(coms[1].Copy().Multiply(ids))
-		j.Add(one)
+		for _, com := range commitment[1:] {
+			if com == nil {
+				return nil, errCommitmentNilElement
+			}
 
-		i++
-
-		fallthrough
-	default:
-		for _, com := range coms[i:] {
-			prime.Add(com.Copy().Multiply(ids.Copy().Pow(j)))
-			j.Add(one)
+			pk.Add(com)
 		}
+	case len(commitment) >= 2:
+		return comPubKey(g, id, pk, commitment)
 	}
 
-	return pk.Equal(prime) == 1
+	return pk, nil
+}
+
+func comPubKey(g group.Group, id uint64, pk *group.Element, commitment []*group.Element) (*group.Element, error) {
+	if commitment[1] == nil {
+		return nil, errCommitmentNilElement
+	}
+
+	// if there are elements left and since i == 1, we can spare one exponentiation
+	s := g.NewScalar().SetUInt64(id)
+	pk.Add(commitment[1].Copy().Multiply(s))
+
+	i := uint64(1)
+	is := g.NewScalar()
+
+	for _, com := range commitment[2:] {
+		if com == nil {
+			return nil, errCommitmentNilElement
+		}
+
+		i++
+		is.SetUInt64(i)
+		pk.Add(com.Copy().Multiply(s.Copy().Pow(is)))
+	}
+
+	return pk, nil
 }

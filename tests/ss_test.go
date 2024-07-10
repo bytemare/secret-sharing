@@ -174,6 +174,30 @@ func TestCommitment(t *testing.T) {
 	}
 }
 
+func TestCombine_Bad_NoKeys(t *testing.T) {
+	errNoShares := errors.New("no shares provided")
+
+	for _, g := range groups {
+		t.Run(g.String(), func(tt *testing.T) {
+			shares := secretsharing.KeyShares{}
+
+			if _, err := shares.Combine(g); err == nil || err.Error() != errNoShares.Error() {
+				t.Fatal("expected error")
+			}
+
+			shares2 := []secretsharing.Share{}
+
+			if _, err := secretsharing.CombineShares(g, nil); err == nil || err.Error() != errNoShares.Error() {
+				t.Fatal("expected error")
+			}
+
+			if _, err := secretsharing.CombineShares(g, shares2); err == nil || err.Error() != errNoShares.Error() {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
 func TestVerify_BadShares(t *testing.T) {
 	threshold := uint(2)
 	total := uint(3)
@@ -510,7 +534,7 @@ func TestPubKeyForCommitment(t *testing.T) {
 
 func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 	errCommitmentNilElement := errors.New("commitment has nil element")
-	threshold := uint(4)
+	threshold := uint(5)
 	shareholders := uint(7)
 
 	for _, g := range groups {
@@ -541,7 +565,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 		}
 
 		// Second element of commitment is nil
-		c := commitment[1]
+		c := commitment[1].Copy()
 		commitment[1] = nil
 		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
 			err.Error() != errCommitmentNilElement.Error() {
@@ -549,8 +573,18 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 		}
 		commitment[1] = c
 
+		// Third element of the commitment is nil
+		c = commitment[2].Copy()
+		commitment[2] = nil
+		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+			err.Error() != errCommitmentNilElement.Error() {
+			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+		}
+		commitment[2] = c
+
 		// Some other element of the commitment is nil
-		commitment[3] = nil
+		c = commitment[4].Copy()
+		commitment[4] = nil
 		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
 			err.Error() != errCommitmentNilElement.Error() {
 			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)

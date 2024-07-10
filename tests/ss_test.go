@@ -160,6 +160,12 @@ func TestCommitment(t *testing.T) {
 
 			for i, keyshare := range shares {
 				pk := g.Base().Multiply(keyshare.Secret)
+
+				pubkey := keyshare.Public()
+				if pk.Equal(pubkey.PublicKey) != 1 {
+					t.Fatal("expected equality")
+				}
+
 				if !secretsharing.Verify(g, keyshare.ID, pk, commitment) {
 					t.Fatalf("invalid public key for shareholder %d", i)
 				}

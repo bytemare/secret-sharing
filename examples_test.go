@@ -16,9 +16,9 @@ import (
 	secretsharing "github.com/bytemare/secret-sharing"
 )
 
-// ExampleShardAndCombine shows how to split a private key into shares and how to recombine it from a
-// subset of shares.
-func ExampleShardAndCombine() {
+// ExampleShard shows how to split a private key into shares and how to recombine it from a
+// subset of shares. For an example of Verifiable Secret Sharing, see ExampleVerify.
+func ExampleShard() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
 	threshold := uint(3)    // threshold is the minimum amount of necessary shares to recombine the secret
@@ -33,13 +33,13 @@ func ExampleShardAndCombine() {
 		panic(err)
 	}
 
-	// Assemble a subset of shares to recover the secret. We must use [threshold+1] or more shares.
-	subset := []secretsharing.KeyShare{
+	// Assemble a subset of shares to recover the secret. We must use threshold or more shares.
+	subset := []secretsharing.Share{
 		shares[5], shares[0], shares[3],
 	}
 
 	// Combine the subset of shares.
-	recovered, err := secretsharing.Combine(g, subset)
+	recovered, err := secretsharing.CombineShares(g, subset)
 	if err != nil {
 		panic(err)
 	}
@@ -53,9 +53,9 @@ func ExampleShardAndCombine() {
 	// Output: Key split into shares and recombined with a subset of shares!
 }
 
-// ExampleShardAndVerify shows how to split a private key into shares and how one can verify a secret, should the dealer
-// be potentially malicious.
-func ExampleShardAndVerify() {
+// ExampleShardAndVerify shows how to split a private key into shares, commit to the underlying polynomial, and verify
+// the generated public keys given the initial commitment.
+func ExampleVerify() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
 	threshold := uint(3)    // threshold is minimum amount of necessary shares to recombine the secret
@@ -70,16 +70,16 @@ func ExampleShardAndVerify() {
 		panic(err)
 	}
 
-	// Commit to be computed by the dealer.
+	// Commit to polynomial.
 	commitment := secretsharing.Commit(g, polynomial)
 
-	// You can verify any public key using the commitment. This can be run by a single party or any other with access to
-	// the party's public key.
+	// You can verify any public key using the commitment. This can be run by a single participant or any other
+	// participant access to the participant's public key.
 	for _, keyshare := range shares {
 		// Let's derive the public key. Other parties won't have access to the private key, naturally.
 		publicKey := g.Base().Multiply(keyshare.SecretKey())
 
-		// Verify that the keys hare's public key is consistent with the commitment.
+		// Verify that the key share's public key is consistent with the commitment.
 		if !secretsharing.Verify(g, keyshare.Identifier(), publicKey, commitment) {
 			panic("invalid public key for shareholder")
 		}

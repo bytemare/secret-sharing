@@ -65,22 +65,19 @@ func ExampleVerify() {
 	secret := g.NewScalar().Random()
 
 	// Shard the secret into shares
-	shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
+	shares, err := secretsharing.ShardAndCommit(g, secret, threshold, shareholders)
 	if err != nil {
 		panic(err)
 	}
-
-	// Commit to polynomial.
-	commitment := secretsharing.Commit(g, polynomial)
 
 	// You can verify any public key using the commitment. This can be run by a single participant or any other
 	// participant access to the participant's public key.
 	for _, keyshare := range shares {
 		// Let's derive the public key. Other parties won't have access to the private key, naturally.
-		publicKey := g.Base().Multiply(keyshare.SecretKey())
+		publicShare := keyshare.Public()
 
 		// Verify that the key share's public key is consistent with the commitment.
-		if !secretsharing.Verify(g, keyshare.Identifier(), publicKey, commitment) {
+		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
 			panic("invalid public key for shareholder")
 		}
 	}

@@ -38,6 +38,9 @@ type PublicKeyShare struct {
 	// The PublicKey of Secret belonging to the participant.
 	PublicKey *group.Element
 
+	// The Commitment to the polynomial the key was created with.
+	Commitment []*group.Element
+
 	// ID of the participant.
 	ID uint64
 }
@@ -66,8 +69,22 @@ func (s KeyShare) Public() *PublicKeyShare {
 	return s.PublicKeyShare
 }
 
+func makeKeyShare(g group.Group, id uint64, p Polynomial) *KeyShare {
+	ids := g.NewScalar().SetUInt64(id)
+	yi := p.Evaluate(ids)
+
+	return &KeyShare{
+		Secret: yi,
+		PublicKeyShare: &PublicKeyShare{
+			PublicKey:  g.Base().Multiply(yi),
+			Commitment: nil,
+			ID:         id,
+		},
+	}
+}
+
 // Shard splits the secret into total shares, recoverable by a subset of threshold shares.
-// To use Verifiable Secret Sharing, use ShardReturnPolynomial and commit to the polynomial with Commit.
+// To use Verifiable Secret Sharing, use ShardAndCommit.
 func Shard(
 	g group.Group,
 	secret *group.Scalar,
@@ -83,21 +100,33 @@ func Shard(
 	return shares, err
 }
 
-func makeKeyShare(g group.Group, id uint64, p Polynomial) *KeyShare {
-	ids := g.NewScalar().SetUInt64(id)
-	yi := p.Evaluate(ids)
-
-	return &KeyShare{
-		Secret: yi,
-		PublicKeyShare: &PublicKeyShare{
-			PublicKey: g.Base().Multiply(yi),
-			ID:        id,
-		},
+// ShardAndCommit does the same as Shard but populates the returned key shares with the Commitment to the polynomial.
+func ShardAndCommit(g group.Group,
+	secret *group.Scalar,
+	threshold, total uint,
+	polynomial ...*group.Scalar,
+) ([]*KeyShare, error) {
+	shares, p, err := ShardReturnPolynomial(g, secret, threshold, total, polynomial...)
+	if err != nil {
+		return nil, err
 	}
+
+	commitment := Commit(g, p)
+
+	for _, share := range shares {
+		share.Commitment = commitment
+	}
+
+	for _, pi := range p {
+		pi.Zero() // zero-out the polynomial, just to be sure.
+	}
+
+	return shares, nil
 }
 
 // ShardReturnPolynomial splits the secret into total shares, recoverable by a subset of threshold shares, and returns
-// the constructed secret polynomial. To use Verifiable Secret Sharing, call Commit with the returned polynomial.
+// the constructed secret polynomial without committing to it. Use the Commit function if you want to commit to the
+// returned polynomial.
 func ShardReturnPolynomial(
 	g group.Group,
 	secret *group.Scalar,

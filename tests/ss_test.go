@@ -151,12 +151,10 @@ func TestCommitment(t *testing.T) {
 		t.Run(g.String(), func(tt *testing.T) {
 			secret := g.NewScalar().Random()
 
-			shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total)
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			commitment := secretsharing.Commit(g, polynomial)
 
 			for i, keyshare := range shares {
 				pk := g.Base().Multiply(keyshare.Secret)
@@ -166,7 +164,7 @@ func TestCommitment(t *testing.T) {
 					t.Fatal("expected equality")
 				}
 
-				if !secretsharing.Verify(g, keyshare.ID, pk, commitment) {
+				if !secretsharing.Verify(g, pubkey.ID, pk, pubkey.Commitment) {
 					t.Fatalf("invalid public key for shareholder %d", i)
 				}
 			}
@@ -206,12 +204,10 @@ func TestVerify_BadShares(t *testing.T) {
 		t.Run(g.String(), func(tt *testing.T) {
 			secret := g.NewScalar().Random()
 
-			shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total)
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			commitments := secretsharing.Commit(g, polynomial)
 
 			// Alter the shares
 			for _, share := range shares {
@@ -221,7 +217,7 @@ func TestVerify_BadShares(t *testing.T) {
 			// Verify
 			for _, share := range shares {
 				pk := g.Base().Multiply(share.Secret)
-				if secretsharing.Verify(g, share.ID, pk, commitments) {
+				if secretsharing.Verify(g, share.ID, pk, share.Commitment) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
 			}
@@ -286,6 +282,14 @@ func TestShard_LowShares(t *testing.T) {
 			secret := g.NewScalar().Random()
 
 			if _, err := secretsharing.Shard(g, secret, threshold, total); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+
+			if _, err := secretsharing.ShardAndCommit(g, secret, threshold, total); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+
+			if _, _, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
 		})
@@ -501,32 +505,32 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 }
 
 func TestPubKeyForCommitment(t *testing.T) {
-	threshold := uint(3)    // threshold is the minimum amount of necessary shares to recombine the secret
-	shareholders := uint(7) // the total amount of key share-holders
+	threshold := uint(3) // threshold is the minimum amount of necessary shares to recombine the secret
+	total := uint(7)     // the total amount of key share-holders
 
 	for _, g := range groups {
 		// This is the global secret to be shared
 		secret := g.NewScalar().Random()
 
 		// Shard the secret into shares
-		shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
-		if err != nil {
-			panic(err)
-		}
-
-		commitment := secretsharing.Commit(g, polynomial)
-
-		// No expected error
-		pk, err := secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment)
+		shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if pk.Equal(shares[0].PublicKey) != 1 {
+		publicShare := shares[0].Public()
+
+		// No expected error
+		pk, err := secretsharing.PubKeyForCommitment(g, publicShare.ID, publicShare.Commitment)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if pk.Equal(publicShare.PublicKey) != 1 {
 			t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
 		}
 
-		if !secretsharing.Verify(g, shares[0].ID, shares[0].PublicKey, commitment) {
+		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
 			t.Fatal("unexpected public key")
 		}
 	}

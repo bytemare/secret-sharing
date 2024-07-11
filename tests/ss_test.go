@@ -284,6 +284,14 @@ func TestShard_LowShares(t *testing.T) {
 			if _, err := secretsharing.Shard(g, secret, threshold, total); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
+
+			if _, err := secretsharing.ShardAndCommit(g, secret, threshold, total); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+
+			if _, _, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
 		})
 	}
 }

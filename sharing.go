@@ -50,6 +50,9 @@ type KeyShare struct {
 	// The Secret of a participant (or secret share).
 	Secret *group.Scalar
 
+	// GroupPublicKey is the public key for which the secret key is sharded among participants.
+	GroupPublicKey *group.Element
+
 	// PublicKeyShare is the public part of the participant's key share.
 	*PublicKeyShare
 }
@@ -69,12 +72,13 @@ func (s KeyShare) Public() *PublicKeyShare {
 	return s.PublicKeyShare
 }
 
-func makeKeyShare(g group.Group, id uint64, p Polynomial) *KeyShare {
+func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.Element) *KeyShare {
 	ids := g.NewScalar().SetUInt64(id)
 	yi := p.Evaluate(ids)
 
 	return &KeyShare{
-		Secret: yi,
+		Secret:         yi,
+		GroupPublicKey: groupPublicKey,
 		PublicKeyShare: &PublicKeyShare{
 			PublicKey:  g.Base().Multiply(yi),
 			Commitment: nil,
@@ -147,12 +151,13 @@ func ShardReturnPolynomial(
 	}
 
 	p[0] = secret.Copy()
+	groupPublicKey := g.Base().Multiply(secret)
 
 	// Evaluate the polynomial for each point x=1,...,n
 	secretKeyShares := make([]*KeyShare, total)
 
 	for i := uint64(1); i <= uint64(total); i++ {
-		secretKeyShares[i-1] = makeKeyShare(g, i, p)
+		secretKeyShares[i-1] = makeKeyShare(g, i, p, groupPublicKey)
 	}
 
 	return secretKeyShares, p, nil

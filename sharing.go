@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
+// Copyright (C) 2024 Daniel Bourdrez. All Rights Reserved.
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree or at
@@ -23,55 +23,6 @@ var (
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
 )
 
-// The Share interface enables to use functions in this package with compatible key shares.
-type Share interface {
-	// Identifier returns the identity for this share.
-	Identifier() uint64
-
-	// SecretKey returns the participant's secret share.
-	SecretKey() *group.Scalar
-}
-
-// PublicKeyShare specifies the public key of a participant identified with ID. This can be useful to keep a registry of
-// participants.
-type PublicKeyShare struct {
-	// The PublicKey of Secret belonging to the participant.
-	PublicKey *group.Element
-
-	// The Commitment to the polynomial the key was created with.
-	Commitment []*group.Element
-
-	// ID of the participant.
-	ID uint64
-}
-
-// KeyShare holds the secret and public key share for a given participant.
-type KeyShare struct {
-	// The Secret of a participant (or secret share).
-	Secret *group.Scalar
-
-	// GroupPublicKey is the public key for which the secret key is sharded among participants.
-	GroupPublicKey *group.Element
-
-	// PublicKeyShare is the public part of the participant's key share.
-	*PublicKeyShare
-}
-
-// Identifier returns the identity for this share.
-func (s KeyShare) Identifier() uint64 {
-	return s.ID
-}
-
-// SecretKey returns the participant's secret share.
-func (s KeyShare) SecretKey() *group.Scalar {
-	return s.Secret
-}
-
-// Public returns the public key share and identifier corresponding to the secret key share.
-func (s KeyShare) Public() *PublicKeyShare {
-	return s.PublicKeyShare
-}
-
 func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.Element) *KeyShare {
 	ids := g.NewScalar().SetUInt64(id)
 	yi := p.Evaluate(ids)
@@ -79,10 +30,11 @@ func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.
 	return &KeyShare{
 		Secret:         yi,
 		GroupPublicKey: groupPublicKey,
-		PublicKeyShare: &PublicKeyShare{
+		PublicKeyShare: PublicKeyShare{
 			PublicKey:  g.Base().Multiply(yi),
 			Commitment: nil,
 			ID:         id,
+			Group:      g,
 		},
 	}
 }

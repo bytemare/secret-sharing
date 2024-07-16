@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
+// Copyright (C) 2024 Daniel Bourdrez. All Rights Reserved.
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree or at
@@ -9,6 +9,7 @@
 package secretsharing_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -56,7 +57,7 @@ func TestSecretSharing(t *testing.T) {
 	total := uint(5)
 
 	for _, g := range groups {
-		t.Run(g.String(), func(tt *testing.T) {
+		t.Run(g.String(), func(t *testing.T) {
 			secret := g.NewScalar().Random()
 
 			shares, err := secretsharing.Shard(g, secret, threshold, total)
@@ -98,7 +99,7 @@ func TestNewPolynomial_Ints(t *testing.T) {
 				i64 := uint64(i + 1)
 				pRef[i] = g.NewScalar().SetUInt64(i64)
 				ints[i] = i64
-				shares[i] = &secretsharing.KeyShare{PublicKeyShare: &secretsharing.PublicKeyShare{ID: i64}}
+				shares[i] = &secretsharing.KeyShare{PublicKeyShare: secretsharing.PublicKeyShare{ID: i64}}
 			}
 
 			pInts := secretsharing.NewPolynomialFromIntegers(g, ints)
@@ -167,6 +168,16 @@ func TestCommitment(t *testing.T) {
 				if !secretsharing.Verify(g, pubkey.ID, pk, pubkey.Commitment) {
 					t.Fatalf("invalid public key for shareholder %d", i)
 				}
+			}
+
+			b, err := json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			k := secretsharing.KeyShare{}
+			if err := json.Unmarshal(b, &k); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
@@ -285,11 +296,13 @@ func TestShard_LowShares(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
 
-			if _, err := secretsharing.ShardAndCommit(g, secret, threshold, total); err == nil || err.Error() != expected {
+			if _, err := secretsharing.ShardAndCommit(g, secret, threshold, total); err == nil ||
+				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
 
-			if _, _, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total); err == nil || err.Error() != expected {
+			if _, _, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, total); err == nil ||
+				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
 		})
@@ -328,16 +341,18 @@ func TestBadPolynomial_SecretNotSet(t *testing.T) {
 	expected := "provided polynomial's first coefficient not set to the secret"
 
 	for _, g := range groups {
-		// Test polynomial with first coefficient not set to the secret
-		polyNoSecret := make(secretsharing.Polynomial, threshold)
-		polyNoSecret[0] = g.NewScalar().Random()
-		polyNoSecret[1] = g.NewScalar().Random()
-		polyNoSecret[2] = g.NewScalar().Random()
+		t.Run(g.String(), func(t *testing.T) {
+			// Test polynomial with first coefficient not set to the secret
+			polyNoSecret := make(secretsharing.Polynomial, threshold)
+			polyNoSecret[0] = g.NewScalar().Random()
+			polyNoSecret[1] = g.NewScalar().Random()
+			polyNoSecret[2] = g.NewScalar().Random()
 
-		t.Run(g.String(), func(tt *testing.T) {
-			if err := testBadPolynomial(g, threshold, total, polyNoSecret); err == nil || err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+			t.Run(g.String(), func(tt *testing.T) {
+				if err := testBadPolynomial(g, threshold, total, polyNoSecret); err == nil || err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
+			})
 		})
 	}
 }
@@ -348,20 +363,23 @@ func TestBadPolynomial_NilCoeff(t *testing.T) {
 	expected := "the polynomial has a nil coefficient"
 
 	for _, g := range groups {
-		// Test polynomial with a nil coefficient
-		polyNilCoeff := make(secretsharing.Polynomial, threshold)
-		polyNilCoeff[0] = g.NewScalar().Random()
-		polyNilCoeff[1] = nil
-		polyNilCoeff[2] = g.NewScalar().Random()
+		t.Run(g.String(), func(t *testing.T) {
+			// Test polynomial with a nil coefficient
+			polyNilCoeff := make(secretsharing.Polynomial, threshold)
+			polyNilCoeff[0] = g.NewScalar().Random()
+			polyNilCoeff[1] = nil
+			polyNilCoeff[2] = g.NewScalar().Random()
 
-		t.Run(g.String(), func(tt *testing.T) {
-			if err := testBadPolynomial(g, threshold, total, polyNilCoeff); err == nil || err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+			t.Run(g.String(), func(tt *testing.T) {
+				if err := testBadPolynomial(g, threshold, total, polyNilCoeff); err == nil || err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
 
-			if err := testBadPolynomial(g, threshold, total, polyNilCoeff[1:]); err == nil || err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+				if err := testBadPolynomial(g, threshold, total, polyNilCoeff[1:]); err == nil ||
+					err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
+			})
 		})
 	}
 }
@@ -372,20 +390,23 @@ func TestBadPolynomial_ZeroCoeff(t *testing.T) {
 	expected := "one of the polynomial's coefficients is zero"
 
 	for _, g := range groups {
-		// Test polynomial with a zero coefficient
-		polyZeroCoeff := make(secretsharing.Polynomial, threshold)
-		polyZeroCoeff[0] = g.NewScalar().Random()
-		polyZeroCoeff[1] = g.NewScalar().Zero()
-		polyZeroCoeff[2] = g.NewScalar().Random()
+		t.Run(g.String(), func(t *testing.T) {
+			// Test polynomial with a zero coefficient
+			polyZeroCoeff := make(secretsharing.Polynomial, threshold)
+			polyZeroCoeff[0] = g.NewScalar().Random()
+			polyZeroCoeff[1] = g.NewScalar().Zero()
+			polyZeroCoeff[2] = g.NewScalar().Random()
 
-		t.Run(g.String(), func(tt *testing.T) {
-			if err := testBadPolynomial(g, threshold, total, polyZeroCoeff); err != nil && err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+			t.Run(g.String(), func(tt *testing.T) {
+				if err := testBadPolynomial(g, threshold, total, polyZeroCoeff); err != nil && err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
 
-			if err := testBadPolynomial(g, threshold, total, polyZeroCoeff[1:]); err != nil && err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+				if err := testBadPolynomial(g, threshold, total, polyZeroCoeff[1:]); err != nil &&
+					err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
+			})
 		})
 	}
 }
@@ -396,24 +417,26 @@ func TestBadPolynomial_WrongSize(t *testing.T) {
 	expected := "invalid number of coefficients in polynomial"
 
 	for _, g := range groups {
-		// Test polynomial with a zero coefficient
-		polyShort := secretsharing.Polynomial{
-			g.NewScalar().Random(),
-		} // threshold-1
-		polyLong := secretsharing.Polynomial{
-			g.NewScalar().Random(),
-			g.NewScalar().Random(),
-			g.NewScalar().Random(),
-		} // threshold+2
+		t.Run(g.String(), func(t *testing.T) {
+			// Test polynomial with a zero coefficient
+			polyShort := secretsharing.Polynomial{
+				g.NewScalar().Random(),
+			} // threshold-1
+			polyLong := secretsharing.Polynomial{
+				g.NewScalar().Random(),
+				g.NewScalar().Random(),
+				g.NewScalar().Random(),
+			} // threshold+2
 
-		t.Run(g.String(), func(tt *testing.T) {
-			if err := testBadPolynomial(g, threshold, total, polyShort); err != nil && err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+			t.Run(g.String(), func(tt *testing.T) {
+				if err := testBadPolynomial(g, threshold, total, polyShort); err != nil && err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
 
-			if err := testBadPolynomial(g, threshold, total, polyLong); err != nil && err.Error() != expected {
-				t.Fatalf("expected error %q, got %q", expected, err)
-			}
+				if err := testBadPolynomial(g, threshold, total, polyLong); err != nil && err.Error() != expected {
+					t.Fatalf("expected error %q, got %q", expected, err)
+				}
+			})
 		})
 	}
 }
@@ -423,16 +446,18 @@ func TestCombine_TooFewShares(t *testing.T) {
 	expected := "no shares provided"
 
 	for _, g := range groups {
-		// Nil shares
-		if _, err := secretsharing.CombineShares(g, nil); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			// Nil shares
+			if _, err := secretsharing.CombineShares(g, nil); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
 
-		// Zero shares
-		var shares []secretsharing.Share
-		if _, err := secretsharing.CombineShares(g, shares); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+			// Zero shares
+			var shares []secretsharing.Share
+			if _, err := secretsharing.CombineShares(g, shares); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -440,15 +465,18 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 	expected := "identifier for interpolation is nil or zero"
 
 	for _, g := range groups {
-		badShare := []secretsharing.Share{
-			&secretsharing.KeyShare{
-				Secret:         nil,
-				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 0},
-			},
-		}
-		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			badShare := []secretsharing.Share{
+				&secretsharing.KeyShare{
+					Secret:         nil,
+					PublicKeyShare: secretsharing.PublicKeyShare{ID: 0},
+				},
+			}
+			if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil ||
+				err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -456,10 +484,12 @@ func TestCombine_BadIdentifiers_Nil(t *testing.T) {
 	expected := "the polynomial has a nil coefficient"
 
 	for _, g := range groups {
-		xCoords := secretsharing.Polynomial{g.NewScalar().SetUInt64(1), nil}
-		if _, err := xCoords.DeriveInterpolatingValue(g, xCoords[0]); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			xCoords := secretsharing.Polynomial{g.NewScalar().SetUInt64(1), nil}
+			if _, err := xCoords.DeriveInterpolatingValue(g, xCoords[0]); err == nil || err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -467,20 +497,22 @@ func TestCombine_BadIdentifiers_Zero(t *testing.T) {
 	expected := "one of the polynomial's coefficients is zero"
 
 	for _, g := range groups {
-
-		badShare := []secretsharing.Share{
-			&secretsharing.KeyShare{
-				Secret:         g.NewScalar().Random(),
-				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
-			},
-			&secretsharing.KeyShare{
-				Secret:         g.NewScalar().Random(),
-				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 0},
-			},
-		}
-		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			badShare := []secretsharing.Share{
+				&secretsharing.KeyShare{
+					Secret:         g.NewScalar().Random(),
+					PublicKeyShare: secretsharing.PublicKeyShare{ID: 1},
+				},
+				&secretsharing.KeyShare{
+					Secret:         g.NewScalar().Random(),
+					PublicKeyShare: secretsharing.PublicKeyShare{ID: 0},
+				},
+			}
+			if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil ||
+				err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -488,19 +520,22 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 	expected := "the polynomial has duplicate coefficients"
 
 	for _, g := range groups {
-		badShare := []secretsharing.Share{
-			&secretsharing.KeyShare{
-				Secret:         g.NewScalar().Random(),
-				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
-			},
-			&secretsharing.KeyShare{
-				Secret:         g.NewScalar().Random(),
-				PublicKeyShare: &secretsharing.PublicKeyShare{ID: 1},
-			},
-		}
-		if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil || err.Error() != expected {
-			t.Fatalf("expected error %q, got %q", expected, err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			badShare := []secretsharing.Share{
+				&secretsharing.KeyShare{
+					Secret:         g.NewScalar().Random(),
+					PublicKeyShare: secretsharing.PublicKeyShare{ID: 1},
+				},
+				&secretsharing.KeyShare{
+					Secret:         g.NewScalar().Random(),
+					PublicKeyShare: secretsharing.PublicKeyShare{ID: 1},
+				},
+			}
+			if _, err := secretsharing.PolynomialInterpolateConstant(g, badShare); err == nil ||
+				err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			}
+		})
 	}
 }
 
@@ -509,30 +544,32 @@ func TestPubKeyForCommitment(t *testing.T) {
 	total := uint(7)     // the total amount of key share-holders
 
 	for _, g := range groups {
-		// This is the global secret to be shared
-		secret := g.NewScalar().Random()
+		t.Run(g.String(), func(t *testing.T) {
+			// This is the global secret to be shared
+			secret := g.NewScalar().Random()
 
-		// Shard the secret into shares
-		shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
-		if err != nil {
-			t.Fatal(err)
-		}
+			// Shard the secret into shares
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		publicShare := shares[0].Public()
+			publicShare := shares[0].Public()
 
-		// No expected error
-		pk, err := secretsharing.PubKeyForCommitment(g, publicShare.ID, publicShare.Commitment)
-		if err != nil {
-			t.Fatal(err)
-		}
+			// No expected error
+			pk, err := secretsharing.PubKeyForCommitment(g, publicShare.ID, publicShare.Commitment)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		if pk.Equal(publicShare.PublicKey) != 1 {
-			t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
-		}
+			if pk.Equal(publicShare.PublicKey) != 1 {
+				t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
+			}
 
-		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
-			t.Fatal("unexpected public key")
-		}
+			if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
+				t.Fatal("unexpected public key")
+			}
+		})
 	}
 }
 
@@ -542,65 +579,175 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 	shareholders := uint(7)
 
 	for _, g := range groups {
-		secret := g.NewScalar().Random()
-		shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
-		if err != nil {
-			panic(err)
-		}
+		t.Run(g.String(), func(t *testing.T) {
+			secret := g.NewScalar().Random()
+			shares, polynomial, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, shareholders)
+			if err != nil {
+				panic(err)
+			}
 
-		commitment := secretsharing.Commit(g, polynomial)
+			commitment := secretsharing.Commit(g, polynomial)
 
-		// No commitment provided
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, nil); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
+			// No commitment provided
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, nil); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
 
-		// Provided commitment is empty
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{}); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
+			// Provided commitment is empty
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{}); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
 
-		// First element of commitment is nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{nil}); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
+			// First element of commitment is nil
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{nil}); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
 
-		// Second element of commitment is nil and id = 1
-		c := commitment[1].Copy()
-		commitment[1] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
-		commitment[1] = c
+			// Second element of commitment is nil and id = 1
+			c := commitment[1].Copy()
+			commitment[1] = nil
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
+			commitment[1] = c
 
-		// Second element of commitment is nil
-		c = commitment[1].Copy()
-		commitment[1] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
-		commitment[1] = c
+			// Second element of commitment is nil
+			c = commitment[1].Copy()
+			commitment[1] = nil
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
+			commitment[1] = c
 
-		// Third element of the commitment is nil
-		c = commitment[2].Copy()
-		commitment[2] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
-		}
-		commitment[2] = c
+			// Third element of the commitment is nil
+			c = commitment[2].Copy()
+			commitment[2] = nil
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
+			commitment[2] = c
 
-		// Some other element of the commitment is nil
-		c = commitment[4].Copy()
-		commitment[4] = nil
-		if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
-			err.Error() != errCommitmentNilElement.Error() {
-			t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			// Some other element of the commitment is nil
+			c = commitment[4].Copy()
+			commitment[4] = nil
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+				err.Error() != errCommitmentNilElement.Error() {
+				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
+			}
+		})
+	}
+}
+
+func compareKeyShares(s1, s2 *secretsharing.KeyShare) error {
+	if s1.Secret.Equal(s2.Secret) != 1 {
+		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
+	}
+
+	if s1.GroupPublicKey.Equal(s2.GroupPublicKey) != 1 {
+		return fmt.Errorf(
+			"Expected equality on GroupPublicKey:\n\t%s\n\t%s\n",
+			s1.GroupPublicKey.Hex(),
+			s2.GroupPublicKey.Hex(),
+		)
+	}
+
+	if s1.PublicKey.Equal(s2.PublicKey) != 1 {
+		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey.Hex(), s2.PublicKey.Hex())
+	}
+
+	if s1.ID != s2.ID {
+		return fmt.Errorf("Expected equality on ID:\n\t%d\n\t%d\n", s1.ID, s2.ID)
+	}
+
+	if s1.Group != s2.Group {
+		return fmt.Errorf("Expected equality on Group:\n\t%v\n\t%v\n", s1.Group, s2.Group)
+	}
+
+	if len(s1.Commitment) != len(s2.Commitment) {
+		return fmt.Errorf(
+			"Expected equality on Commitment length:\n\t%d\n\t%d\n",
+			len(s1.Commitment),
+			len(s2.Commitment),
+		)
+	}
+
+	for i := range s1.Commitment {
+		if s1.Commitment[i].Equal(s2.Commitment[i]) != 1 {
+			return fmt.Errorf(
+				"Expected equality on Commitment %d:\n\t%s\n\t%s\n",
+				i,
+				s1.Commitment[i].Hex(),
+				s2.Commitment[i].Hex(),
+			)
 		}
+	}
+
+	return nil
+}
+
+func TestEncoding(t *testing.T) {
+	threshold := uint(3) // threshold is the minimum amount of necessary shares to recombine the secret
+	total := uint(7)     // the total amount of key share-holders
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			// This is the global secret to be shared
+			secret := g.NewScalar().Random()
+
+			// Shard the secret into shares
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			b := shares[0].Encode()
+
+			decoded := &secretsharing.KeyShare{}
+			if err = decoded.Decode(b); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = compareKeyShares(shares[0], decoded); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestJSONEncoding(t *testing.T) {
+	threshold := uint(3) // threshold is the minimum amount of necessary shares to recombine the secret
+	total := uint(7)     // the total amount of key share-holders
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			// This is the global secret to be shared
+			secret := g.NewScalar().Random()
+
+			// Shard the secret into shares
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			j, err := json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			decoded := &secretsharing.KeyShare{}
+			if err = json.Unmarshal(j, decoded); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = compareKeyShares(shares[0], decoded); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

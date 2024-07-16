@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
+// Copyright (C) 2024 Daniel Bourdrez. All Rights Reserved.
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree or at
@@ -16,7 +16,7 @@ import (
 
 var errCommitmentNilElement = errors.New("commitment has nil element")
 
-// Commitment is the tuple defining a Verifiable Secret Sharing Commitment.
+// Commitment is the tuple defining a Verifiable Secret Sharing Commitment to a secret Polynomial.
 type Commitment []*group.Element
 
 // Commit builds a Verifiable Secret Sharing vector Commitment to each of the coefficients
@@ -30,10 +30,9 @@ func Commit(g group.Group, polynomial Polynomial) Commitment {
 	return coms
 }
 
-// Verify allows verification of participant id's public key given its public key and the VSS commitment
-// to the secret polynomial.
-func Verify(g group.Group, id uint64, pk *group.Element, coms []*group.Element) bool {
-	v, err := PubKeyForCommitment(g, id, coms)
+// Verify allows verification of participant id's public key given the VSS commitment to the secret polynomial.
+func Verify(g group.Group, id uint64, pk *group.Element, commitment []*group.Element) bool {
+	v, err := PubKeyForCommitment(g, id, commitment)
 	if err != nil {
 		return false
 	}

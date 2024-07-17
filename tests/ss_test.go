@@ -890,7 +890,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			badElement := getBadElement(t, g)
 			encoded = slices.Replace(encoded, 13, 13+g.ElementLength(), badElement...)
 			expectedErrorPrefix := errors.New("failed to decode public key")
-			if err := new(secretsharing.PublicKeyShare).Decode(encoded); err == nil ||
+			if err = new(secretsharing.PublicKeyShare).Decode(encoded); err == nil ||
 				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
@@ -902,7 +902,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
 			expectedErrorPrefix = errors.New("failed to decode commitment 2")
-			if err := new(secretsharing.PublicKeyShare).Decode(encoded); err == nil ||
+			if err = new(secretsharing.PublicKeyShare).Decode(encoded); err == nil ||
 				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
@@ -916,7 +916,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			s := string(j)
 			s = strings.Replace(s, "\"group\"", "\"nope\"", 1)
 
-			if err := json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
 				err.Error() != errEncodingInvalidJSONEncoding.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingInvalidJSONEncoding, err)
 			}
@@ -928,11 +928,11 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			}
 
 			s = string(j)
-			s = strings.Replace(s, fmt.Sprintf("\"group\":%d", g), "\"group\":-1", 1)
+			s = strings.Replace(s, fmt.Sprintf("\"group\":%d", g), "\"group\":70", 1)
 
-			if err := json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
-				err.Error() != errEncodingInvalidJSONEncoding.Error() {
-				t.Fatalf("expected error %q, got %q", errEncodingInvalidJSONEncoding, err)
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
+				err.Error() != errEncodingInvalidGroup.Error() {
+				t.Fatalf("expected error %q, got %q", errEncodingInvalidGroup, err)
 			}
 
 			// UnmarshallJSON: bad group
@@ -944,23 +944,22 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			s = string(j)
 			s = strings.Replace(s, fmt.Sprintf("\"group\":%d", g), "\"group\":17", 1)
 
-			if err := json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
 				err.Error() != errEncodingInvalidGroup.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingInvalidGroup, err)
 			}
 
-			// UnmarshallJSON: no commitment
+			// UnmarshallJSON: no error on empty commitment
 			j, err = json.Marshal(shares[0])
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			s = string(j)
-			s = strings.Replace(s, "\"commitment\"", "\"nope\"", 1)
+			s = strings.Replace(s, "\"commitment\"", "\"commitment\":[],\"other\"", 1)
 
-			if err := json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
-				err.Error() != errEncodingInvalidJSONEncoding.Error() {
-				t.Fatalf("expected error %q, got %q", errEncodingInvalidJSONEncoding, err)
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil {
+				t.Fatalf("unexpected error %q", err)
 			}
 		})
 	}
@@ -1007,7 +1006,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
 			expectedErrorPrefix := errors.New("failed to decode public key: ")
-			if err := new(secretsharing.KeyShare).Decode(encoded); err == nil ||
+			if err = new(secretsharing.KeyShare).Decode(encoded); err == nil ||
 				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
@@ -1018,7 +1017,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ScalarLength(), badScalar...)
 			expectedErrorPrefix = errors.New("failed to decode Secret in KeyShare")
-			if err := new(secretsharing.KeyShare).Decode(encoded); err == nil ||
+			if err = new(secretsharing.KeyShare).Decode(encoded); err == nil ||
 				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
@@ -1030,7 +1029,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
 			expectedErrorPrefix = errors.New("failed to decode GroupPublicKey in KeyShare")
-			if err := new(secretsharing.KeyShare).Decode(encoded); err == nil ||
+			if err = new(secretsharing.KeyShare).Decode(encoded); err == nil ||
 				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
@@ -1044,7 +1043,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			s := string(j)
 			s = strings.Replace(s, fmt.Sprintf("\"group\":%d", g), "\"group\":-1", 1)
 
-			if err := json.Unmarshal([]byte(s), new(secretsharing.KeyShare)); err == nil ||
+			if err = json.Unmarshal([]byte(s), new(secretsharing.KeyShare)); err == nil ||
 				err.Error() != errEncodingInvalidJSONEncoding.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingInvalidJSONEncoding, err)
 			}

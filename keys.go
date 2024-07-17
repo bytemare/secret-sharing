@@ -255,10 +255,7 @@ func unmarshalJSONHeader(data []byte) (group.Group, int, error) {
 		return 0, 0, err
 	}
 
-	nPoly, err := jsonRePolyLen(s)
-	if err != nil {
-		return 0, 0, err
-	}
+	nPoly := jsonRePolyLen(s)
 
 	return g, nPoly, nil
 }
@@ -316,25 +313,21 @@ func jsonReGetGroup(s string) (group.Group, error) {
 }
 
 // jsonRePolyLen attempts to find the number of elements encoded in the commitment.
-func jsonRePolyLen(s string) (int, error) {
+func jsonRePolyLen(s string) int {
 	re := regexp.MustCompile(`commitment":\[\s*(.*?)\s*]`)
 
 	matches := re.FindStringSubmatch(s)
 	if len(matches) == 0 {
-		return 0, nil
-	}
-
-	if len(matches) != 2 {
-		return 0, errEncodingInvalidJSONEncoding
+		return 0
 	}
 
 	if matches[1] == "" {
-		return 0, nil
+		return 0
 	}
 
 	n := strings.Count(matches[1], ",")
 
-	return n + 1, nil
+	return n + 1
 }
 
 func decodeKeyShareHeader(data []byte) (group.Group, int, int, error) {

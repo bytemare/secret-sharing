@@ -138,7 +138,7 @@ func (p *publicKeyShareShadow) group() group.Group {
 // UnmarshalJSON decodes data into p, or returns an error.
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 	ps := new(publicKeyShareShadow)
-	if err := unmarshallJSON(data, ps); err != nil {
+	if err := unmarshalJSON(data, ps); err != nil {
 		return err
 	}
 
@@ -240,7 +240,7 @@ func (k *keyShareShadow) group() group.Group {
 // UnmarshalJSON decodes data into k, or returns an error.
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	ks := new(keyShareShadow)
-	if err := unmarshallJSON(data, ks); err != nil {
+	if err := unmarshalJSON(data, ks); err != nil {
 		return err
 	}
 
@@ -251,7 +251,7 @@ func (k *KeyShare) UnmarshalJSON(data []byte) error {
 
 // helper functions
 
-func unmarshallJSONHeader(data []byte) (group.Group, int, error) {
+func unmarshalJSONHeader(data []byte) (group.Group, int, error) {
 	s := string(data)
 
 	g, err := jsonReGetGroup(s)
@@ -272,8 +272,8 @@ type shadowInit interface {
 	group() group.Group
 }
 
-func unmarshallJSON(data []byte, target shadowInit) error {
-	g, nPoly, err := unmarshallJSONHeader(data)
+func unmarshalJSON(data []byte, target shadowInit) error {
+	g, nPoly, err := unmarshalJSONHeader(data)
 	if err != nil {
 		return err
 	}
@@ -281,7 +281,7 @@ func unmarshallJSON(data []byte, target shadowInit) error {
 	target.init(g, nPoly)
 
 	if err = json.Unmarshal(data, target); err != nil {
-		return fmt.Errorf("failed to unmarshall KeyShare: %w", err)
+		return fmt.Errorf("failed to unmarshal KeyShare: %w", err)
 	}
 
 	if target.group() != g || !target.group().Available() {
@@ -312,6 +312,7 @@ func jsonReGetGroup(s string) (group.Group, error) {
 
 	i, err := strconv.Atoi(f)
 	if err != nil {
+		// This can't happen because of JSON's preprocessing checks.
 		return 0, fmt.Errorf("failed to read Group: %w", err)
 	}
 

@@ -653,19 +653,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 	}
 }
 
-func compareKeyShares(s1, s2 *secretsharing.KeyShare) error {
-	if s1.Secret.Equal(s2.Secret) != 1 {
-		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
-	}
-
-	if s1.GroupPublicKey.Equal(s2.GroupPublicKey) != 1 {
-		return fmt.Errorf(
-			"Expected equality on GroupPublicKey:\n\t%s\n\t%s\n",
-			s1.GroupPublicKey.Hex(),
-			s2.GroupPublicKey.Hex(),
-		)
-	}
-
+func comparePublicKeyShare(s1, s2 *secretsharing.PublicKeyShare) error {
 	if s1.PublicKey.Equal(s2.PublicKey) != 1 {
 		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey.Hex(), s2.PublicKey.Hex())
 	}
@@ -700,6 +688,22 @@ func compareKeyShares(s1, s2 *secretsharing.KeyShare) error {
 	return nil
 }
 
+func compareKeyShares(s1, s2 *secretsharing.KeyShare) error {
+	if s1.Secret.Equal(s2.Secret) != 1 {
+		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
+	}
+
+	if s1.GroupPublicKey.Equal(s2.GroupPublicKey) != 1 {
+		return fmt.Errorf(
+			"Expected equality on GroupPublicKey:\n\t%s\n\t%s\n",
+			s1.GroupPublicKey.Hex(),
+			s2.GroupPublicKey.Hex(),
+		)
+	}
+
+	return comparePublicKeyShare(&s1.PublicKeyShare, &s2.PublicKeyShare)
+}
+
 func TestEncoding(t *testing.T) {
 	threshold := uint(3) // threshold is the minimum amount of necessary shares to recombine the secret
 	total := uint(7)     // the total amount of key share-holders
@@ -715,14 +719,27 @@ func TestEncoding(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			b := shares[0].Encode()
+			// PublicKeyShare
+			b := shares[0].Public().Encode()
 
-			decoded := &secretsharing.KeyShare{}
-			if err = decoded.Decode(b); err != nil {
+			decodedPKS := &secretsharing.PublicKeyShare{}
+			if err = decodedPKS.Decode(b); err != nil {
 				t.Fatal(err)
 			}
 
-			if err = compareKeyShares(shares[0], decoded); err != nil {
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+				t.Fatal(err)
+			}
+
+			// KeyShare
+			b = shares[0].Encode()
+
+			decodedKS := &secretsharing.KeyShare{}
+			if err = decodedKS.Decode(b); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = compareKeyShares(shares[0], decodedKS); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -744,17 +761,33 @@ func TestJSONEncoding(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j, err := json.Marshal(shares[0])
+			// PublicKeyShare
+			j, err := json.Marshal(shares[0].PublicKeyShare)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			decoded := &secretsharing.KeyShare{}
-			if err = json.Unmarshal(j, decoded); err != nil {
+			decodedPKS := &secretsharing.PublicKeyShare{}
+			if err = json.Unmarshal(j, decodedPKS); err != nil {
 				t.Fatal(err)
 			}
 
-			if err = compareKeyShares(shares[0], decoded); err != nil {
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+				t.Fatal(err)
+			}
+
+			// KeyShare
+			j, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			decodedKS := &secretsharing.KeyShare{}
+			if err = json.Unmarshal(j, decodedKS); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = compareKeyShares(shares[0], decodedKS); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -820,8 +853,8 @@ func getBadScalar(g group.Group) []byte {
 }
 
 func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
-	threshold := uint(1)
-	total := uint(2)
+	threshold := uint(3)
+	total := uint(4)
 
 	errEncodingInvalidLength := errors.New("invalid encoding length")
 	errEncodingInvalidGroup := errors.New("invalid group identifier")
@@ -865,8 +898,14 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			// Decode: bad commitment
 			encoded = shares[0].Public().Encode()
 			badElement = getBadElement(t, g)
-			offset := 13 + g.ElementLength()
+			offset := 13 + 2*g.ElementLength()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
+
+			expectedErrorPrefix = errors.New("failed to decode commitment 2")
+			if err := new(secretsharing.PublicKeyShare).Decode(encoded); err == nil ||
+				!strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
+				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
+			}
 
 			// UnmarshallJSON: bad group, no group
 			j, err := json.Marshal(shares[0])

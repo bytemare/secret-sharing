@@ -907,13 +907,28 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
 
-			// UnmarshallJSON: bad group, no group
+			// UnmarshallJSON: bad json
 			j, err := json.Marshal(shares[0])
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			s := string(j)
+			s = strings.Replace(s, "\"group\"", "bad", 1)
+
+			expectedErrorPrefix = errors.New("invalid character 'b' looking for beginning of object key string")
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
+				err.Error() != expectedErrorPrefix.Error() {
+				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
+			}
+
+			// UnmarshallJSON: bad group, no group
+			j, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = string(j)
 			s = strings.Replace(s, "\"group\"", "\"nope\"", 1)
 
 			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil ||
@@ -956,7 +971,34 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			}
 
 			s = string(j)
+			s = strings.Replace(s, "\"commitment\"", "\"nope\"", 1)
+
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err != nil {
+				t.Fatalf("unexpected error %q", err)
+			}
+
+			// UnmarshallJSON: no error on empty commitment
+			j, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = string(j)
 			s = strings.Replace(s, "\"commitment\"", "\"commitment\":[],\"other\"", 1)
+
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err != nil {
+				t.Fatalf("unexpected error %q", err)
+			}
+
+			// UnmarshallJSON: no error on empty commitment
+			shares[0].Commitment = []*group.Element{}
+			j, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = string(j)
+			s = strings.Replace(s, "\"commitment\"", "\"nope\"", 1)
 
 			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
@@ -1034,13 +1076,28 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
 
-			// UnmarshallJSON: bad group encoding
+			// UnmarshallJSON: bad json
 			j, err := json.Marshal(shares[0])
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			s := string(j)
+			s = strings.Replace(s, "\"group\"", "bad", 1)
+
+			expectedErrorPrefix = errors.New("invalid character 'b' looking for beginning of object key string")
+			if err = json.Unmarshal([]byte(s), new(secretsharing.KeyShare)); err == nil ||
+				err.Error() != expectedErrorPrefix.Error() {
+				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
+			}
+
+			// UnmarshallJSON: bad group encoding
+			j, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			s = string(j)
 			s = strings.Replace(s, fmt.Sprintf("\"group\":%d", g), "\"group\":-1", 1)
 
 			if err = json.Unmarshal([]byte(s), new(secretsharing.KeyShare)); err == nil ||

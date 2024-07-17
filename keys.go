@@ -300,7 +300,11 @@ func jsonRePolyLen(s string) (int, error) {
 
 	matches := re.FindStringSubmatch(s)
 	if len(matches) != 2 {
-		return 0, errEncodingInvalidCommitment
+		return 0, errEncodingInvalidJSONEncoding
+	}
+
+	if matches[1] == "" {
+		return 0, nil
 	}
 
 	n := strings.Count(matches[1], ",")

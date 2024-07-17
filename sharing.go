@@ -18,6 +18,7 @@ import (
 var (
 	errThresholdIsZero  = errors.New("threshold is zero")
 	errNoShares         = errors.New("no shares provided")
+	errSecretIsZero     = errors.New("the provided secret is zero")
 	errTooFewShares     = errors.New("number of shares must be equal or greater than the threshold")
 	errPolyIsWrongSize  = errors.New("invalid number of coefficients in polynomial")
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
@@ -39,8 +40,8 @@ func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.
 	}
 }
 
-// Shard splits the secret into total shares, recoverable by a subset of threshold shares.
-// To use Verifiable Secret Sharing, use ShardAndCommit.
+// Shard splits the secret into total shares, recoverable by a subset of threshold shares. If no secret is provided, a
+// new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
 func Shard(
 	g group.Group,
 	secret *group.Scalar,
@@ -57,6 +58,7 @@ func Shard(
 }
 
 // ShardAndCommit does the same as Shard but populates the returned key shares with the Commitment to the polynomial.
+// If no secret is provided, a new random secret is created.
 func ShardAndCommit(g group.Group,
 	secret *group.Scalar,
 	threshold, total uint,
@@ -81,8 +83,8 @@ func ShardAndCommit(g group.Group,
 }
 
 // ShardReturnPolynomial splits the secret into total shares, recoverable by a subset of threshold shares, and returns
-// the constructed secret polynomial without committing to it. Use the Commit function if you want to commit to the
-// returned polynomial.
+// the constructed secret polynomial without committing to it. If no secret is provided, a new random secret is created.
+// Use the Commit function if you want to commit to the returned polynomial.
 func ShardReturnPolynomial(
 	g group.Group,
 	secret *group.Scalar,
@@ -93,17 +95,12 @@ func ShardReturnPolynomial(
 		return nil, nil, errTooFewShares
 	}
 
-	p, err := makePolynomial(g, threshold, polynomial...)
+	p, err := makePolynomial(g, secret, threshold, polynomial...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if p[0] != nil && p[0].Equal(secret) == 0 {
-		return nil, nil, errPolySecretNotSet
-	}
-
-	p[0] = secret.Copy()
-	groupPublicKey := g.Base().Multiply(secret)
+	groupPublicKey := g.Base().Multiply(p[0])
 
 	// Evaluate the polynomial for each point x=1,...,n
 	secretKeyShares := make([]*KeyShare, total)
@@ -141,23 +138,34 @@ func CombineShares(g group.Group, shares []Share) (*group.Scalar, error) {
 	return PolynomialInterpolateConstant(g, shares)
 }
 
-func makePolynomial(g group.Group, threshold uint, polynomial ...*group.Scalar) (Polynomial, error) {
+func makePolynomial(g group.Group, s *group.Scalar, threshold uint, polynomial ...*group.Scalar) (Polynomial, error) {
 	if threshold == 0 {
 		return nil, errThresholdIsZero
+	}
+
+	if s != nil && s.IsZero() {
+		return nil, errSecretIsZero
 	}
 
 	p := NewPolynomial(threshold)
 
 	switch len(polynomial) {
 	case 0:
-		for i := uint(1); i < threshold; i++ {
+		i := uint(0)
+
+		if s != nil {
+			p[0] = s.Copy()
+			i++
+		}
+
+		for ; i < threshold; i++ {
 			p[i] = g.NewScalar().Random()
 		}
-	case int(threshold - 1):
-		if err := copyPolynomial(p[1:], polynomial); err != nil {
-			return nil, err
-		}
 	case int(threshold):
+		if s != nil && polynomial[0].Equal(s) != 1 {
+			return nil, errPolySecretNotSet
+		}
+
 		if err := copyPolynomial(p, polynomial); err != nil {
 			return nil, err
 		}

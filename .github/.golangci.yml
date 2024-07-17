@@ -9,7 +9,7 @@ linters:
     - containedctx
     - contextcheck
     - copyloopvar
-    - cyclop
+    #- cyclop
     - decorder
     #- depguard
     - dogsled
@@ -144,6 +144,8 @@ linters-settings:
       - opinionated
       - performance
       - style
+    disabled-checks:
+      - unnamedResult
   gocyclo:
     min-complexity: 15
   godox:
@@ -269,7 +271,7 @@ issues:
 run:
   tests: false
 
-output:
-  formats:
-    - format: github-actions
-  show-stats: true
+#output:
+#  formats:
+#    - format: github-actions
+#  show-stats: true

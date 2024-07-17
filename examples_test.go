@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Copyright (C) 2023 Daniel Bourdrez. All Rights Reserved.
+// Copyright (C) 2024 Daniel Bourdrez. All Rights Reserved.
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree or at
@@ -73,7 +73,7 @@ func ExampleVerify() {
 	// You can verify any public key using the commitment. This can be run by a single participant or any other
 	// participant access to the participant's public key.
 	for _, keyshare := range shares {
-		// Let's derive the public key. Other parties won't have access to the private key, naturally.
+		// Let's get the public key. Other parties won't have access to the private key, naturally.
 		publicShare := keyshare.Public()
 
 		// Verify that the key share's public key is consistent with the commitment.

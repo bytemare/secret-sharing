@@ -24,7 +24,6 @@ import (
 var (
 	errEncodingInvalidGroup        = errors.New("invalid group identifier")
 	errEncodingInvalidLength       = errors.New("invalid encoding length")
-	errEncodingInvalidCommitment   = errors.New("invalid encoding of commitments")
 	errEncodingInvalidJSONEncoding = errors.New("invalid JSON encoding")
 )
 
@@ -44,7 +43,7 @@ type PublicKeyShare struct {
 	PublicKey *group.Element `json:"publicKey"`
 
 	// The Commitment to the polynomial the key was created with.
-	Commitment []*group.Element `json:"commitment"`
+	Commitment []*group.Element `json:"commitment,omitempty"`
 
 	// ID of the participant.
 	ID uint64 `json:"id"`
@@ -153,6 +152,10 @@ func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 	ps := initPkShadow(g, nPoly)
 	if err = json.Unmarshal(data, ps); err != nil {
 		return fmt.Errorf("failed to decode PublicKeyShare: %w", err)
+	}
+
+	if !ps.Group.Available() {
+		return errEncodingInvalidGroup
 	}
 
 	*p = PublicKeyShare(*ps)
@@ -308,9 +311,6 @@ func jsonRePolyLen(s string) (int, error) {
 	}
 
 	n := strings.Count(matches[1], ",")
-	if n == 0 {
-		return 0, errEncodingInvalidCommitment
-	}
 
 	return n + 1, nil
 }

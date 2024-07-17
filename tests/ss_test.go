@@ -958,7 +958,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			s = string(j)
 			s = strings.Replace(s, "\"commitment\"", "\"commitment\":[],\"other\"", 1)
 
-			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err == nil {
+			if err = json.Unmarshal([]byte(s), new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
 			}
 		})

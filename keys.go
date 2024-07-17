@@ -120,42 +120,26 @@ func (p *PublicKeyShare) Decode(data []byte) error {
 
 type publicKeyShareShadow PublicKeyShare
 
-func initPkShadow(g group.Group, threshold int) *publicKeyShareShadow {
-	p := &publicKeyShareShadow{
-		ID:         0,
-		Group:      g,
-		PublicKey:  g.NewElement(),
-		Commitment: make([]*group.Element, threshold),
-	}
+func (p *publicKeyShareShadow) init(g group.Group, threshold int) {
+	p.ID = 0
+	p.Group = g
+	p.PublicKey = g.NewElement()
+	p.Commitment = make([]*group.Element, threshold)
 
 	for i := range threshold {
 		p.Commitment[i] = g.NewElement()
 	}
+}
 
-	return p
+func (p *publicKeyShareShadow) group() group.Group {
+	return p.Group
 }
 
 // UnmarshalJSON decodes data into p, or returns an error.
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
-	s := string(data)
-
-	g, err := jsonReGetGroup(s)
-	if err != nil {
+	ps := new(publicKeyShareShadow)
+	if err := unmarshallJSON(data, ps); err != nil {
 		return err
-	}
-
-	nPoly, err := jsonRePolyLen(s)
-	if err != nil {
-		return err
-	}
-
-	ps := initPkShadow(g, nPoly)
-	if err = json.Unmarshal(data, ps); err != nil {
-		return fmt.Errorf("failed to decode PublicKeyShare: %w", err)
-	}
-
-	if !ps.Group.Available() {
-		return errEncodingInvalidGroup
 	}
 
 	*p = PublicKeyShare(*ps)
@@ -238,25 +222,71 @@ func (k *KeyShare) populate(s *group.Scalar, gpk *group.Element, pks *PublicKeyS
 type keyShareShadow struct {
 	Secret         *group.Scalar  `json:"secret"`
 	GroupPublicKey *group.Element `json:"groupPublicKey"`
+	*publicKeyShareShadow
+}
+
+func (k *keyShareShadow) init(g group.Group, threshold int) {
+	p := new(publicKeyShareShadow)
+	p.init(g, threshold)
+	k.Secret = g.NewScalar()
+	k.GroupPublicKey = g.NewElement()
+	k.publicKeyShareShadow = p
+}
+
+func (k *keyShareShadow) group() group.Group {
+	return k.Group
 }
 
 // UnmarshalJSON decodes data into k, or returns an error.
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
-	pk := new(PublicKeyShare)
-	if err := json.Unmarshal(data, pk); err != nil {
+	ks := new(keyShareShadow)
+	if err := unmarshallJSON(data, ks); err != nil {
+		return err
+	}
+
+	k.populate(ks.Secret, ks.GroupPublicKey, (*PublicKeyShare)(ks.publicKeyShareShadow))
+
+	return nil
+}
+
+// helper functions
+
+func unmarshallJSONHeader(data []byte) (group.Group, int, error) {
+	s := string(data)
+
+	g, err := jsonReGetGroup(s)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	nPoly, err := jsonRePolyLen(s)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return g, nPoly, nil
+}
+
+type shadowInit interface {
+	init(g group.Group, threshold int)
+	group() group.Group
+}
+
+func unmarshallJSON(data []byte, target shadowInit) error {
+	g, nPoly, err := unmarshallJSONHeader(data)
+	if err != nil {
+		return err
+	}
+
+	target.init(g, nPoly)
+
+	if err = json.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("failed to unmarshall KeyShare: %w", err)
 	}
 
-	ks := &keyShareShadow{
-		Secret:         pk.Group.NewScalar(),
-		GroupPublicKey: pk.Group.NewElement(),
+	if target.group() != g || !target.group().Available() {
+		return errEncodingInvalidGroup
 	}
-
-	if err := json.Unmarshal(data, ks); err != nil {
-		return fmt.Errorf("failed to unmarshall KeyShare: %w", err)
-	}
-
-	k.populate(ks.Secret, ks.GroupPublicKey, pk)
 
 	return nil
 }

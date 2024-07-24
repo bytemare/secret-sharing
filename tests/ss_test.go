@@ -964,6 +964,21 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			data = replaceStringInBytes(data, fmt.Sprintf("\"group\":%d", g), "\"group\":17")
 			testUnmarshalJSONError(t, new(secretsharing.PublicKeyShare), data, errEncodingInvalidGroup)
 
+			// UnmarshallJSON: bad ciphersuite
+			data, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			overflow := "9223372036854775808" // MaxInt64 + 1
+			data = replaceStringInBytes(data, fmt.Sprintf("\"group\":%d", g), "\"group\":"+overflow)
+
+			expectedErrorPrefix = errors.New(
+				"failed to read Group: strconv.Atoi: parsing \"9223372036854775808\": value out of range",
+			)
+
+			testUnmarshalJSONErrorPrefix(t, new(secretsharing.PublicKeyShare), data, expectedErrorPrefix)
+
 			// UnmarshallJSON: no error on empty commitment
 			data, err = json.Marshal(shares[0])
 			if err != nil {

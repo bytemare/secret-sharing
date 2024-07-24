@@ -43,7 +43,7 @@ func NewPolynomialFromIntegers(g group.Group, ints []uint64) Polynomial {
 	return polynomial
 }
 
-// NewPolynomialFromListFunc returns a Polynomial from the uint64 returned by f applied on each element of the slice.
+// NewPolynomialFromListFunc returns a Polynomial from the group.Scalar returned by f applied on each element of the slice.
 func NewPolynomialFromListFunc[S ~[]E, E any](g group.Group, s S, f func(E) *group.Scalar) Polynomial {
 	polynomial := make(Polynomial, len(s))
 	for i, v := range s {

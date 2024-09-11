@@ -21,8 +21,8 @@ import (
 func ExampleShard() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
-	threshold := uint(3)    // threshold is the minimum amount of necessary shares to recombine the secret
-	shareholders := uint(7) // the total amount of key share-holders
+	threshold := uint16(3)    // threshold is the minimum amount of necessary shares to recombine the secret
+	shareholders := uint16(7) // the max amount of key share-holders
 
 	// This is the global secret to be shared
 	secret := g.NewScalar().Random()
@@ -58,8 +58,8 @@ func ExampleShard() {
 func ExampleVerify() {
 	// These are the configuration parameters
 	g := group.Ristretto255Sha512
-	threshold := uint(3)    // threshold is minimum amount of necessary shares to recombine the secret
-	shareholders := uint(7) // the total amount of key share-holders
+	threshold := uint16(3)    // threshold is minimum amount of necessary shares to recombine the secret
+	shareholders := uint16(7) // the max amount of key share-holders
 
 	// This is the global secret to be shared
 	secret := g.NewScalar().Random()

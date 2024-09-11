@@ -31,7 +31,7 @@ func Commit(g group.Group, polynomial Polynomial) Commitment {
 }
 
 // Verify allows verification of participant id's public key given the VSS commitment to the secret polynomial.
-func Verify(g group.Group, id uint64, pk *group.Element, commitment []*group.Element) bool {
+func Verify(g group.Group, id uint16, pk *group.Element, commitment []*group.Element) bool {
 	v, err := PubKeyForCommitment(g, id, commitment)
 	if err != nil {
 		return false
@@ -41,7 +41,7 @@ func Verify(g group.Group, id uint64, pk *group.Element, commitment []*group.Ele
 }
 
 // PubKeyForCommitment computes the public key corresponding to the commitment of participant id.
-func PubKeyForCommitment(g group.Group, id uint64, commitment []*group.Element) (*group.Element, error) {
+func PubKeyForCommitment(g group.Group, id uint16, commitment []*group.Element) (*group.Element, error) {
 	if len(commitment) == 0 || commitment[0] == nil {
 		return nil, errCommitmentNilElement
 	}
@@ -65,13 +65,13 @@ func PubKeyForCommitment(g group.Group, id uint64, commitment []*group.Element) 
 	return pk, nil
 }
 
-func comPubKey(g group.Group, id uint64, pk *group.Element, commitment []*group.Element) (*group.Element, error) {
+func comPubKey(g group.Group, id uint16, pk *group.Element, commitment []*group.Element) (*group.Element, error) {
 	if commitment[1] == nil {
 		return nil, errCommitmentNilElement
 	}
 
 	// if there are elements left and since i == 1, we can spare one exponentiation
-	s := g.NewScalar().SetUInt64(id)
+	s := g.NewScalar().SetUInt64(uint64(id))
 	pk.Add(commitment[1].Copy().Multiply(s))
 
 	i := uint64(1)

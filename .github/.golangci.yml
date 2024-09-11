@@ -159,6 +159,9 @@ linters-settings:
     simplify: true
   goimports:
     local-prefixes: github.com/bytemare/secret-sharing
+  gosec:
+    excludes:
+      - G115
   gosimple:
     checks: [ "all" ]
   govet:

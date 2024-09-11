@@ -15,7 +15,6 @@ import (
 )
 
 var (
-	errPolyDiffLength      = errors.New("destination and source polynomials length differ")
 	errPolyXIsZero         = errors.New("identifier for interpolation is nil or zero")
 	errPolyHasZeroCoeff    = errors.New("one of the polynomial's coefficients is zero")
 	errPolyHasDuplicates   = errors.New("the polynomial has duplicate coefficients")
@@ -29,15 +28,15 @@ var (
 type Polynomial []*group.Scalar
 
 // NewPolynomial returns a slice of Scalars with the capacity to hold the desired coefficients.
-func NewPolynomial(coefficients uint) Polynomial {
+func NewPolynomial(coefficients uint16) Polynomial {
 	return make(Polynomial, coefficients)
 }
 
-// NewPolynomialFromIntegers returns a Polynomial from a slice of uint64.
-func NewPolynomialFromIntegers(g group.Group, ints []uint64) Polynomial {
+// NewPolynomialFromIntegers returns a Polynomial from a slice of uint16.
+func NewPolynomialFromIntegers(g group.Group, ints []uint16) Polynomial {
 	polynomial := make(Polynomial, len(ints))
 	for i, v := range ints {
-		polynomial[i] = g.NewScalar().SetUInt64(v)
+		polynomial[i] = g.NewScalar().SetUInt64(uint64(v))
 	}
 
 	return polynomial
@@ -54,11 +53,8 @@ func NewPolynomialFromListFunc[S ~[]E, E any](g group.Group, s S, f func(E) *gro
 	return polynomial
 }
 
+// the only call to copyPolynomial ensure that both polynomials are of the same length.
 func copyPolynomial(dst, src Polynomial) error {
-	if len(dst) != len(src) {
-		return errPolyDiffLength
-	}
-
 	for index, coeff := range src {
 		if coeff == nil {
 			return errPolyHasNilCoeff
@@ -194,7 +190,7 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 // key shares.
 func PolynomialInterpolateConstant(g group.Group, shares []Share) (*group.Scalar, error) {
 	xCoords := NewPolynomialFromListFunc(g, shares, func(share Share) *group.Scalar {
-		return g.NewScalar().SetUInt64(share.Identifier())
+		return g.NewScalar().SetUInt64(uint64(share.Identifier()))
 	})
 
 	key := g.NewScalar().Zero()

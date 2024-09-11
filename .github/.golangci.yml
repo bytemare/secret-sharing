@@ -146,6 +146,7 @@ linters-settings:
       - style
     disabled-checks:
       - unnamedResult
+      - builtinShadow
   gocyclo:
     min-complexity: 15
   godox:
@@ -229,6 +230,8 @@ linters-settings:
   prealloc:
     simple: false
     for-loops: true
+  predeclared:
+    ignore: "max"
   whitespace:
     multi-if: false
     multi-func: false

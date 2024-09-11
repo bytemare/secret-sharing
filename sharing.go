@@ -24,8 +24,8 @@ var (
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
 )
 
-func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.Element) *KeyShare {
-	ids := g.NewScalar().SetUInt64(id)
+func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.Element) *KeyShare {
+	ids := g.NewScalar().SetUInt64(uint64(id))
 	yi := p.Evaluate(ids)
 
 	return &KeyShare{
@@ -40,15 +40,15 @@ func makeKeyShare(g group.Group, id uint64, p Polynomial, groupPublicKey *group.
 	}
 }
 
-// Shard splits the secret into total shares, recoverable by a subset of threshold shares. If no secret is provided, a
+// Shard splits the secret into max shares, recoverable by a subset of threshold shares. If no secret is provided, a
 // new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
 func Shard(
 	g group.Group,
 	secret *group.Scalar,
-	threshold, total uint,
+	threshold, max uint16,
 	polynomial ...*group.Scalar,
 ) ([]*KeyShare, error) {
-	shares, p, err := ShardReturnPolynomial(g, secret, threshold, total, polynomial...)
+	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 
 	for _, pi := range p {
 		pi.Zero() // zero-out the polynomial, just to be sure.
@@ -61,10 +61,10 @@ func Shard(
 // If no secret is provided, a new random secret is created.
 func ShardAndCommit(g group.Group,
 	secret *group.Scalar,
-	threshold, total uint,
+	threshold, max uint16,
 	polynomial ...*group.Scalar,
 ) ([]*KeyShare, error) {
-	shares, p, err := ShardReturnPolynomial(g, secret, threshold, total, polynomial...)
+	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,16 +82,16 @@ func ShardAndCommit(g group.Group,
 	return shares, nil
 }
 
-// ShardReturnPolynomial splits the secret into total shares, recoverable by a subset of threshold shares, and returns
+// ShardReturnPolynomial splits the secret into max shares, recoverable by a subset of threshold shares, and returns
 // the constructed secret polynomial without committing to it. If no secret is provided, a new random secret is created.
 // Use the Commit function if you want to commit to the returned polynomial.
 func ShardReturnPolynomial(
 	g group.Group,
 	secret *group.Scalar,
-	threshold, total uint,
+	threshold, max uint16,
 	polynomial ...*group.Scalar,
 ) ([]*KeyShare, Polynomial, error) {
-	if total < threshold {
+	if max < threshold {
 		return nil, nil, errTooFewShares
 	}
 
@@ -103,9 +103,9 @@ func ShardReturnPolynomial(
 	groupPublicKey := g.Base().Multiply(p[0])
 
 	// Evaluate the polynomial for each point x=1,...,n
-	secretKeyShares := make([]*KeyShare, total)
+	secretKeyShares := make([]*KeyShare, max)
 
-	for i := uint64(1); i <= uint64(total); i++ {
+	for i := uint16(1); i <= max; i++ {
 		secretKeyShares[i-1] = makeKeyShare(g, i, p, groupPublicKey)
 	}
 
@@ -138,7 +138,7 @@ func CombineShares(g group.Group, shares []Share) (*group.Scalar, error) {
 	return PolynomialInterpolateConstant(g, shares)
 }
 
-func makePolynomial(g group.Group, s *group.Scalar, threshold uint, polynomial ...*group.Scalar) (Polynomial, error) {
+func makePolynomial(g group.Group, s *group.Scalar, threshold uint16, polynomial ...*group.Scalar) (Polynomial, error) {
 	if threshold == 0 {
 		return nil, errThresholdIsZero
 	}
@@ -151,7 +151,7 @@ func makePolynomial(g group.Group, s *group.Scalar, threshold uint, polynomial .
 
 	switch len(polynomial) {
 	case 0:
-		i := uint(0)
+		i := uint16(0)
 
 		if s != nil {
 			p[0] = s.Copy()

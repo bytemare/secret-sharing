@@ -25,12 +25,13 @@ var (
 	errEncodingInvalidGroup        = errors.New("invalid group identifier")
 	errEncodingInvalidLength       = errors.New("invalid encoding length")
 	errEncodingInvalidJSONEncoding = errors.New("invalid JSON encoding")
+	errInvalidPolynomialLength     = errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
 )
 
 // The Share interface enables to use functions in this package with compatible key shares.
 type Share interface {
 	// Identifier returns the identity for this share.
-	Identifier() uint64
+	Identifier() uint16
 
 	// SecretKey returns the participant's secret share.
 	SecretKey() *group.Scalar
@@ -46,7 +47,7 @@ type PublicKeyShare struct {
 	Commitment []*group.Element `json:"commitment,omitempty"`
 
 	// ID of the participant.
-	ID uint64 `json:"id"`
+	ID uint16 `json:"id"`
 
 	// Group specifies the elliptic curve group the elements are part of.
 	Group group.Group `json:"group"`
@@ -57,14 +58,17 @@ func (p *PublicKeyShare) Verify() bool {
 	return Verify(p.Group, p.ID, p.PublicKey, p.Commitment)
 }
 
+func publicKeyShareLength(g group.Group, polyLen int) int {
+	eLen := g.ElementLength()
+	return 1 + 2 + 4 + eLen + polyLen*eLen
+}
+
 // Encode serializes p into a compact byte string.
 func (p *PublicKeyShare) Encode() []byte {
-	eLen := p.Group.ElementLength()
-	oLen := 1 + 8 + 4 + eLen + len(p.Commitment)*eLen
-	out := make([]byte, 13, oLen)
+	out := make([]byte, 7, publicKeyShareLength(p.Group, len(p.Commitment)))
 	out[0] = byte(p.Group)
-	binary.LittleEndian.PutUint64(out[1:9], p.ID)
-	binary.LittleEndian.PutUint32(out[9:13], uint32(len(p.Commitment)))
+	binary.LittleEndian.PutUint16(out[1:3], p.ID)
+	binary.LittleEndian.PutUint32(out[3:7], uint32(len(p.Commitment)))
 	out = append(out, p.PublicKey.Encode()...)
 
 	for _, c := range p.Commitment {
@@ -76,17 +80,17 @@ func (p *PublicKeyShare) Encode() []byte {
 
 func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 	eLen := g.ElementLength()
-	id := binary.LittleEndian.Uint64(data[1:9])
+	id := binary.LittleEndian.Uint16(data[1:3])
 
 	pk := g.NewElement()
-	if err := pk.Decode(data[13 : 13+eLen]); err != nil {
+	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
 		return fmt.Errorf("failed to decode public key: %w", err)
 	}
 
 	i := 0
 	commitment := make([]*group.Element, cLen)
 
-	for j := 13 + eLen; j < len(data); j += eLen {
+	for j := 7 + eLen; j < len(data); j += eLen {
 		c := g.NewElement()
 		if err := c.Decode(data[j : j+eLen]); err != nil {
 			return fmt.Errorf("failed to decode commitment %d: %w", i+1, err)
@@ -138,7 +142,7 @@ type KeyShare struct {
 }
 
 // Identifier returns the identity for this share.
-func (k *KeyShare) Identifier() uint64 {
+func (k *KeyShare) Identifier() uint16 {
 	return k.ID
 }
 
@@ -217,12 +221,12 @@ func (k *KeyShare) UnmarshalJSON(data []byte) error {
 // helper functions
 
 type shadowInit interface {
-	init(g group.Group, threshold int)
+	init(g group.Group, threshold uint16)
 }
 
 type publicKeyShareShadow PublicKeyShare
 
-func (p *publicKeyShareShadow) init(g group.Group, threshold int) {
+func (p *publicKeyShareShadow) init(g group.Group, threshold uint16) {
 	p.ID = 0
 	p.Group = g
 	p.PublicKey = g.NewElement()
@@ -239,7 +243,7 @@ type keyShareShadow struct {
 	*publicKeyShareShadow
 }
 
-func (k *keyShareShadow) init(g group.Group, threshold int) {
+func (k *keyShareShadow) init(g group.Group, threshold uint16) {
 	p := new(publicKeyShareShadow)
 	p.init(g, threshold)
 	k.Secret = g.NewScalar()
@@ -247,7 +251,7 @@ func (k *keyShareShadow) init(g group.Group, threshold int) {
 	k.publicKeyShareShadow = p
 }
 
-func unmarshalJSONHeader(data []byte) (group.Group, int, error) {
+func unmarshalJSONHeader(data []byte) (group.Group, uint16, error) {
 	s := string(data)
 
 	g, err := jsonReGetGroup(s)
@@ -256,8 +260,11 @@ func unmarshalJSONHeader(data []byte) (group.Group, int, error) {
 	}
 
 	nPoly := jsonRePolyLen(s)
+	if nPoly > 65535 {
+		return 0, 0, errInvalidPolynomialLength
+	}
 
-	return g, nPoly, nil
+	return g, uint16(nPoly), nil
 }
 
 func unmarshalJSON(data []byte, target shadowInit) error {
@@ -339,13 +346,12 @@ func decodeKeyShareHeader(data []byte) (group.Group, int, int, error) {
 		return 0, 0, 0, errEncodingInvalidGroup
 	}
 
-	if len(data) <= 13 {
+	if len(data) <= 7 {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	cLen := int(binary.LittleEndian.Uint32(data[9:13]))
-	eLen := g.ElementLength()
-	pks := 1 + 8 + 4 + eLen + cLen*eLen
+	cLen := int(binary.LittleEndian.Uint32(data[3:7]))
+	pksLen := publicKeyShareLength(g, cLen)
 
-	return g, pks, cLen, nil
+	return g, pksLen, cLen, nil
 }

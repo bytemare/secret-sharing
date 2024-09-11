@@ -1014,6 +1014,20 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			if err = json.Unmarshal(data, new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
 			}
+
+			// UnmarshallJSON: excessive commitment length
+			shares[0].Commitment = make([]*group.Element, 65536)
+			for i := range 65536 {
+				shares[0].Commitment[i] = g.NewElement()
+			}
+
+			data, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			errInvalidPolynomialLength := errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
+			testUnmarshalJSONError(t, new(secretsharing.PublicKeyShare), data, errInvalidPolynomialLength)
 		})
 	}
 }

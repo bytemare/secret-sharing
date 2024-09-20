@@ -976,6 +976,11 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			expectedErrorPrefix = errors.New("failed to decode PublicKeyShare: failed to decode commitment 2")
 			testDecodeErrorPrefix(t, new(secretsharing.PublicKeyShare), encoded, expectedErrorPrefix)
 
+			// Bad Hex
+			h := shares[0].Public().Hex()
+			expectedErrorPrefix = errors.New("failed to decode PublicKeyShare: encoding/hex: odd length hex string")
+			testDecodeHexError(t, new(secretsharing.PublicKeyShare), h[:len(h)-1], expectedErrorPrefix)
+
 			// UnmarshallJSON: bad json
 			data, err := json.Marshal(shares[0])
 			if err != nil {
@@ -1075,7 +1080,9 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			errInvalidPolynomialLength := errors.New("failed to decode PublicKeyShare: invalid polynomial length (exceeds uint16 limit 65535)")
+			errInvalidPolynomialLength := errors.New(
+				"failed to decode PublicKeyShare: invalid polynomial length (exceeds uint16 limit 65535)",
+			)
 			testUnmarshalJSONError(t, new(secretsharing.PublicKeyShare), data, errInvalidPolynomialLength)
 		})
 	}
@@ -1123,7 +1130,9 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
-			expectedErrorPrefix := errors.New("failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key: element Decode: ")
+			expectedErrorPrefix := errors.New(
+				"failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key: element Decode: ",
+			)
 			testDecodeErrorPrefix(t, new(secretsharing.KeyShare), encoded, expectedErrorPrefix)
 
 			// Decode: Bad scalar
@@ -1138,7 +1147,9 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			offset += g.ScalarLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = errors.New("failed to decode KeyShare: failed to decode GroupPublicKey: element Decode: ")
+			expectedErrorPrefix = errors.New(
+				"failed to decode KeyShare: failed to decode GroupPublicKey: element Decode: ",
+			)
 
 			testDecodeErrorPrefix(t, new(secretsharing.KeyShare), encoded, expectedErrorPrefix)
 

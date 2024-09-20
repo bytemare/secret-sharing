@@ -27,11 +27,11 @@ var (
 	errEncodingInvalidLength       = errors.New("invalid encoding length")
 	errEncodingInvalidJSONEncoding = errors.New("invalid JSON encoding")
 	errInvalidPolynomialLength     = errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
-	errPublicKeyShareDecodePrefix  = "failed to decode PublicKeyShare"
-	errKeyShareDecodePrefix        = "failed to decode KeyShare"
+	errPublicKeyShareDecodePrefix  = errors.New("failed to decode PublicKeyShare")
+	errKeyShareDecodePrefix        = errors.New("failed to decode KeyShare")
 )
 
-const errFmt = "%s: %w"
+const errFmt = "%w: %w"
 
 // The Share interface enables to use functions in this package with compatible key shares.
 type Share interface {
@@ -94,7 +94,7 @@ func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 
 	pk := g.NewElement()
 	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
-		return fmt.Errorf("%s: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
+		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
 	}
 
 	i := 0
@@ -103,7 +103,7 @@ func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 	for j := 7 + eLen; j < len(data); j += eLen {
 		c := g.NewElement()
 		if err := c.Decode(data[j : j+eLen]); err != nil {
-			return fmt.Errorf("%s: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
+			return fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
 		}
 
 		commitment[i] = c
@@ -206,18 +206,18 @@ func (k *KeyShare) Decode(data []byte) error {
 	}
 
 	pk := new(PublicKeyShare)
-	if err := pk.decode(g, cLen, data[:pkLen]); err != nil {
+	if err = pk.decode(g, cLen, data[:pkLen]); err != nil {
 		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
 	s := g.NewScalar()
-	if err := s.Decode(data[pkLen : pkLen+g.ScalarLength()]); err != nil {
-		return fmt.Errorf("%s: failed to decode secret key: %w", errKeyShareDecodePrefix, err)
+	if err = s.Decode(data[pkLen : pkLen+g.ScalarLength()]); err != nil {
+		return fmt.Errorf("%w: failed to decode secret key: %w", errKeyShareDecodePrefix, err)
 	}
 
 	e := g.NewElement()
-	if err := e.Decode(data[pkLen+g.ScalarLength():]); err != nil {
-		return fmt.Errorf("%s: failed to decode GroupPublicKey: %w", errKeyShareDecodePrefix, err)
+	if err = e.Decode(data[pkLen+g.ScalarLength():]); err != nil {
+		return fmt.Errorf("%w: failed to decode GroupPublicKey: %w", errKeyShareDecodePrefix, err)
 	}
 
 	k.populate(s, e, pk)

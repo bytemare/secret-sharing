@@ -10,6 +10,7 @@ package secretsharing
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,7 +27,11 @@ var (
 	errEncodingInvalidLength       = errors.New("invalid encoding length")
 	errEncodingInvalidJSONEncoding = errors.New("invalid JSON encoding")
 	errInvalidPolynomialLength     = errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
+	errPublicKeyShareDecodePrefix  = errors.New("failed to decode PublicKeyShare")
+	errKeyShareDecodePrefix        = errors.New("failed to decode KeyShare")
 )
+
+const errFmt = "%w: %w"
 
 // The Share interface enables to use functions in this package with compatible key shares.
 type Share interface {
@@ -78,13 +83,18 @@ func (p *PublicKeyShare) Encode() []byte {
 	return out
 }
 
+// Hex returns the hexadecimal representation of the byte encoding returned by Encode().
+func (p *PublicKeyShare) Hex() string {
+	return hex.EncodeToString(p.Encode())
+}
+
 func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 	eLen := g.ElementLength()
 	id := binary.LittleEndian.Uint16(data[1:3])
 
 	pk := g.NewElement()
 	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
-		return fmt.Errorf("failed to decode public key: %w", err)
+		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
 	}
 
 	i := 0
@@ -93,7 +103,7 @@ func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 	for j := 7 + eLen; j < len(data); j += eLen {
 		c := g.NewElement()
 		if err := c.Decode(data[j : j+eLen]); err != nil {
-			return fmt.Errorf("failed to decode commitment %d: %w", i+1, err)
+			return fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
 		}
 
 		commitment[i] = c
@@ -112,21 +122,31 @@ func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 func (p *PublicKeyShare) Decode(data []byte) error {
 	g, expectedLength, cLen, err := decodeKeyShareHeader(data)
 	if err != nil {
-		return err
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
 	if len(data) != expectedLength {
-		return errEncodingInvalidLength
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, errEncodingInvalidLength)
 	}
 
 	return p.decode(g, cLen, data)
+}
+
+// DecodeHex sets p to the decoding of the hex encoded representation returned by Hex().
+func (p *PublicKeyShare) DecodeHex(h string) error {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
+	}
+
+	return p.Decode(b)
 }
 
 // UnmarshalJSON decodes data into p, or returns an error.
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 	ps := new(publicKeyShareShadow)
 	if err := unmarshalJSON(data, ps); err != nil {
-		return err
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
 	*p = PublicKeyShare(*ps)
@@ -168,36 +188,51 @@ func (k *KeyShare) Encode() []byte {
 	return out
 }
 
+// Hex returns the hexadecimal representation of the byte encoding returned by Encode().
+func (k *KeyShare) Hex() string {
+	return hex.EncodeToString(k.Encode())
+}
+
 // Decode deserializes the compact encoding obtained from Encode(), or returns an error.
 func (k *KeyShare) Decode(data []byte) error {
-	g, pkLen, cLen, _err := decodeKeyShareHeader(data)
-	if _err != nil {
-		return _err
+	g, pkLen, cLen, err := decodeKeyShareHeader(data)
+	if err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
 	expectedLength := pkLen + g.ScalarLength() + g.ElementLength()
 	if len(data) != expectedLength {
-		return errEncodingInvalidLength
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, errEncodingInvalidLength)
 	}
 
 	pk := new(PublicKeyShare)
-	if err := pk.decode(g, cLen, data[:pkLen]); err != nil {
-		return err
+	if err = pk.decode(g, cLen, data[:pkLen]); err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
 	s := g.NewScalar()
-	if err := s.Decode(data[pkLen : pkLen+g.ScalarLength()]); err != nil {
-		return fmt.Errorf("failed to decode Secret in KeyShare: %w", err)
+	if err = s.Decode(data[pkLen : pkLen+g.ScalarLength()]); err != nil {
+		return fmt.Errorf("%w: failed to decode secret key: %w", errKeyShareDecodePrefix, err)
 	}
 
 	e := g.NewElement()
-	if err := e.Decode(data[pkLen+g.ScalarLength():]); err != nil {
-		return fmt.Errorf("failed to decode GroupPublicKey in KeyShare: %w", err)
+	if err = e.Decode(data[pkLen+g.ScalarLength():]); err != nil {
+		return fmt.Errorf("%w: failed to decode GroupPublicKey: %w", errKeyShareDecodePrefix, err)
 	}
 
 	k.populate(s, e, pk)
 
 	return nil
+}
+
+// DecodeHex sets k to the decoding of the hex encoded representation returned by Hex().
+func (k *KeyShare) DecodeHex(h string) error {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
+	}
+
+	return k.Decode(b)
 }
 
 func (k *KeyShare) populate(s *group.Scalar, gpk *group.Element, pks *PublicKeyShare) {
@@ -210,7 +245,7 @@ func (k *KeyShare) populate(s *group.Scalar, gpk *group.Element, pks *PublicKeyS
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	ks := new(keyShareShadow)
 	if err := unmarshalJSON(data, ks); err != nil {
-		return err
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
 	k.populate(ks.Secret, ks.GroupPublicKey, (*PublicKeyShare)(ks.publicKeyShareShadow))

@@ -704,7 +704,7 @@ func compareKeyShares(s1, s2 *secretsharing.KeyShare) error {
 	return comparePublicKeyShare(&s1.PublicKeyShare, &s2.PublicKeyShare)
 }
 
-func TestEncoding(t *testing.T) {
+func TestEncoding_Bytes(t *testing.T) {
 	threshold := uint16(3) // threshold is the minimum amount of necessary shares to recombine the secret
 	max := uint16(7)       // the max amount of key share-holders
 
@@ -746,7 +746,49 @@ func TestEncoding(t *testing.T) {
 	}
 }
 
-func TestJSONEncoding(t *testing.T) {
+func TestEncoding_Hex(t *testing.T) {
+	threshold := uint16(3) // threshold is the minimum amount of necessary shares to recombine the secret
+	max := uint16(7)       // the max amount of key share-holders
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			// This is the global secret to be shared
+			secret := g.NewScalar().Random()
+
+			// Shard the secret into shares
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, max)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// PublicKeyShare
+			h := shares[0].Public().Hex()
+
+			decodedPKS := new(secretsharing.PublicKeyShare)
+			if err = decodedPKS.DecodeHex(h); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+				t.Fatal(err)
+			}
+
+			// KeyShare
+			h = shares[0].Hex()
+
+			decodedKS := &secretsharing.KeyShare{}
+			if err = decodedKS.DecodeHex(h); err != nil {
+				t.Fatal(err)
+			}
+
+			if err = compareKeyShares(shares[0], decodedKS); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestEncoding_JSON(t *testing.T) {
 	threshold := uint16(3) // threshold is the minimum amount of necessary shares to recombine the secret
 	max := uint16(7)       // the max amount of key share-holders
 
@@ -796,6 +838,7 @@ func TestJSONEncoding(t *testing.T) {
 
 type serde interface {
 	Decode([]byte) error
+	DecodeHex(h string) error
 	UnmarshalJSON(data []byte) error
 }
 
@@ -809,6 +852,12 @@ func testDecodeErrorPrefix(t *testing.T, s serde, data []byte, expectedPrefix er
 	if err := s.Decode(data); err == nil ||
 		!strings.HasPrefix(err.Error(), expectedPrefix.Error()) {
 		t.Fatalf("expected error %q, got %q", expectedPrefix, err)
+	}
+}
+
+func testDecodeHexError(t *testing.T, s serde, data string, expectedError error) {
+	if err := s.DecodeHex(data); err == nil || err.Error() != expectedError.Error() {
+		t.Fatalf("expected error %q, got %q", expectedError, err)
 	}
 }
 
@@ -883,9 +932,9 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 	threshold := uint16(3)
 	max := uint16(4)
 
-	errEncodingInvalidLength := errors.New("invalid encoding length")
-	errEncodingInvalidGroup := errors.New("invalid group identifier")
-	errEncodingInvalidJSONEncoding := errors.New("invalid JSON encoding")
+	errEncodingInvalidLength := errors.New("failed to decode PublicKeyShare: invalid encoding length")
+	errEncodingInvalidGroup := errors.New("failed to decode PublicKeyShare: invalid group identifier")
+	errEncodingInvalidJSONEncoding := errors.New("failed to decode PublicKeyShare: invalid JSON encoding")
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -917,15 +966,20 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 
 			// Decode: Bad public key
 			encoded = slices.Replace(encoded, 7, 7+g.ElementLength(), badElement...)
-			expectedErrorPrefix := errors.New("failed to decode public key")
+			expectedErrorPrefix := errors.New("failed to decode PublicKeyShare: failed to decode public key")
 			testDecodeErrorPrefix(t, new(secretsharing.PublicKeyShare), encoded, expectedErrorPrefix)
 
 			// Decode: bad commitment
 			encoded = shares[0].Public().Encode()
 			offset := 7 + 2*g.ElementLength()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = errors.New("failed to decode commitment 2")
+			expectedErrorPrefix = errors.New("failed to decode PublicKeyShare: failed to decode commitment 2")
 			testDecodeErrorPrefix(t, new(secretsharing.PublicKeyShare), encoded, expectedErrorPrefix)
+
+			// Bad Hex
+			h := shares[0].Public().Hex()
+			expectedErrorPrefix = errors.New("failed to decode PublicKeyShare: encoding/hex: odd length hex string")
+			testDecodeHexError(t, new(secretsharing.PublicKeyShare), h[:len(h)-1], expectedErrorPrefix)
 
 			// UnmarshallJSON: bad json
 			data, err := json.Marshal(shares[0])
@@ -974,7 +1028,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			data = replaceStringInBytes(data, fmt.Sprintf("\"group\":%d", g), "\"group\":"+overflow)
 
 			expectedErrorPrefix = errors.New(
-				"failed to read Group: strconv.Atoi: parsing \"9223372036854775808\": value out of range",
+				"failed to decode PublicKeyShare: failed to read Group: strconv.Atoi: parsing \"9223372036854775808\": value out of range",
 			)
 
 			testUnmarshalJSONErrorPrefix(t, new(secretsharing.PublicKeyShare), data, expectedErrorPrefix)
@@ -1026,7 +1080,9 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			errInvalidPolynomialLength := errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
+			errInvalidPolynomialLength := errors.New(
+				"failed to decode PublicKeyShare: invalid polynomial length (exceeds uint16 limit 65535)",
+			)
 			testUnmarshalJSONError(t, new(secretsharing.PublicKeyShare), data, errInvalidPolynomialLength)
 		})
 	}
@@ -1036,9 +1092,9 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 	threshold := uint16(1)
 	max := uint16(2)
 
-	errEncodingInvalidLength := errors.New("invalid encoding length")
-	errEncodingInvalidGroup := errors.New("invalid group identifier")
-	errEncodingInvalidJSONEncoding := errors.New("invalid JSON encoding")
+	errEncodingInvalidLength := errors.New("failed to decode KeyShare: invalid encoding length")
+	errEncodingInvalidGroup := errors.New("failed to decode KeyShare: invalid group identifier")
+	errEncodingInvalidJSONEncoding := errors.New("failed to decode KeyShare: invalid JSON encoding")
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1074,14 +1130,16 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
-			expectedErrorPrefix := errors.New("failed to decode public key: ")
+			expectedErrorPrefix := errors.New(
+				"failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key: element Decode: ",
+			)
 			testDecodeErrorPrefix(t, new(secretsharing.KeyShare), encoded, expectedErrorPrefix)
 
 			// Decode: Bad scalar
 			offset += g.ElementLength() + len(shares[0].Commitment)*g.ElementLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ScalarLength(), badScalar...)
-			expectedErrorPrefix = errors.New("failed to decode Secret in KeyShare")
+			expectedErrorPrefix = errors.New("failed to decode KeyShare: failed to decode secret key: scalar Decode: ")
 
 			testDecodeErrorPrefix(t, new(secretsharing.KeyShare), encoded, expectedErrorPrefix)
 
@@ -1089,9 +1147,16 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			offset += g.ScalarLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = errors.New("failed to decode GroupPublicKey in KeyShare")
+			expectedErrorPrefix = errors.New(
+				"failed to decode KeyShare: failed to decode GroupPublicKey: element Decode: ",
+			)
 
 			testDecodeErrorPrefix(t, new(secretsharing.KeyShare), encoded, expectedErrorPrefix)
+
+			// Bad Hex
+			h := shares[0].Hex()
+			expectedErrorPrefix = errors.New("failed to decode KeyShare: encoding/hex: odd length hex string")
+			testDecodeHexError(t, new(secretsharing.KeyShare), h[:len(h)-1], expectedErrorPrefix)
 
 			// UnmarshallJSON: bad json
 			data, err := json.Marshal(shares[0])

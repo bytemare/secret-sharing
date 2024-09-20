@@ -16,13 +16,13 @@ import (
 
 var errCommitmentNilElement = errors.New("commitment has nil element")
 
-// Commitment is the tuple defining a Verifiable Secret Sharing Commitment to a secret Polynomial.
-type Commitment []*group.Element
+// VssCommitment is the tuple defining a Verifiable Secret Sharing VssCommitment to a secret Polynomial.
+type VssCommitment []*group.Element
 
-// Commit builds a Verifiable Secret Sharing vector Commitment to each of the coefficients
+// Commit builds a Verifiable Secret Sharing vector VssCommitment to each of the coefficients
 // (of threshold length which uniquely determines the polynomial).
-func Commit(g group.Group, polynomial Polynomial) Commitment {
-	coms := make(Commitment, len(polynomial))
+func Commit(g group.Group, polynomial Polynomial) VssCommitment {
+	coms := make(VssCommitment, len(polynomial))
 	for i, coeff := range polynomial {
 		coms[i] = g.Base().Multiply(coeff)
 	}

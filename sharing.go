@@ -32,10 +32,10 @@ func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.
 		Secret:         yi,
 		GroupPublicKey: groupPublicKey,
 		PublicKeyShare: PublicKeyShare{
-			PublicKey:  g.Base().Multiply(yi),
-			Commitment: nil,
-			ID:         id,
-			Group:      g,
+			PublicKey:     g.Base().Multiply(yi),
+			VssCommitment: nil,
+			ID:            id,
+			Group:         g,
 		},
 	}
 }
@@ -57,7 +57,7 @@ func Shard(
 	return shares, err
 }
 
-// ShardAndCommit does the same as Shard but populates the returned key shares with the Commitment to the polynomial.
+// ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
 // If no secret is provided, a new random secret is created.
 func ShardAndCommit(g group.Group,
 	secret *group.Scalar,
@@ -72,7 +72,7 @@ func ShardAndCommit(g group.Group,
 	commitment := Commit(g, p)
 
 	for _, share := range shares {
-		share.Commitment = commitment
+		share.VssCommitment = commitment
 	}
 
 	for _, pi := range p {

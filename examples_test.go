@@ -77,7 +77,7 @@ func ExampleVerify() {
 		publicShare := keyshare.Public()
 
 		// Verify that the key share's public key is consistent with the commitment.
-		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
+		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.VssCommitment) {
 			panic("invalid public key for shareholder")
 		}
 	}

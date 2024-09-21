@@ -19,7 +19,7 @@ var (
 	errPolyHasZeroCoeff    = errors.New("one of the polynomial's coefficients is zero")
 	errPolyHasDuplicates   = errors.New("the polynomial has duplicate coefficients")
 	errPolyHasNilCoeff     = errors.New("the polynomial has a nil coefficient")
-	errPolyCoeffInexistant = errors.New("the coefficient does not exist in the polynomial")
+	errPolyCoeffInexistant = errors.New("the identifier does not exist in the polynomial")
 )
 
 // Polynomial over scalars, represented as a list of t+1 coefficients, where t is the threshold.
@@ -87,7 +87,8 @@ func (p Polynomial) Verify() error {
 	return nil
 }
 
-func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
+// VerifyInterpolatingInput checks compatibility of the input id with the polynomial. If not, an error is returned.
+func (p Polynomial) VerifyInterpolatingInput(id *group.Scalar) error {
 	if id == nil || id.IsZero() {
 		return errPolyXIsZero
 	}
@@ -104,9 +105,9 @@ func (p Polynomial) verifyInterpolatingInput(id *group.Scalar) error {
 }
 
 // has returns whether s is a coefficient of the polynomial.
-func (p Polynomial) hasNil() bool {
+func (p Polynomial) has(s *group.Scalar) bool {
 	for _, si := range p {
-		if si == nil {
+		if si.Equal(s) == 1 {
 			return true
 		}
 	}
@@ -115,9 +116,9 @@ func (p Polynomial) hasNil() bool {
 }
 
 // has returns whether s is a coefficient of the polynomial.
-func (p Polynomial) has(s *group.Scalar) bool {
+func (p Polynomial) hasNil() bool {
 	for _, si := range p {
-		if si.Equal(s) == 1 {
+		if si == nil {
 			return true
 		}
 	}
@@ -167,7 +168,7 @@ func (p Polynomial) Evaluate(x *group.Scalar) *group.Scalar {
 // DeriveInterpolatingValue derives a value used for polynomial interpolation.
 // id and all the coefficients must be non-zero scalars.
 func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*group.Scalar, error) {
-	if err := p.verifyInterpolatingInput(id); err != nil {
+	if err := p.VerifyInterpolatingInput(id); err != nil {
 		return nil, err
 	}
 
@@ -184,26 +185,4 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 	}
 
 	return numerator.Multiply(denominator.Invert()), nil
-}
-
-// PolynomialInterpolateConstant recovers the constant term of the interpolating polynomial defined by the set of
-// key shares.
-func PolynomialInterpolateConstant(g group.Group, shares []Share) (*group.Scalar, error) {
-	xCoords := NewPolynomialFromListFunc(g, shares, func(share Share) *group.Scalar {
-		return g.NewScalar().SetUInt64(uint64(share.Identifier()))
-	})
-
-	key := g.NewScalar().Zero()
-
-	for i, share := range shares {
-		iv, err := xCoords.DeriveInterpolatingValue(g, xCoords[i])
-		if err != nil {
-			return nil, err
-		}
-
-		delta := iv.Multiply(share.SecretKey())
-		key.Add(delta)
-	}
-
-	return key, nil
 }

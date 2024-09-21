@@ -12,6 +12,8 @@ import (
 	"errors"
 
 	group "github.com/bytemare/crypto"
+
+	"github.com/bytemare/secret-sharing/keys"
 )
 
 var errCommitmentNilElement = errors.New("commitment has nil element")
@@ -38,6 +40,12 @@ func Verify(g group.Group, id uint16, pk *group.Element, commitment []*group.Ele
 	}
 
 	return pk.Equal(v) == 1
+}
+
+// VerifyPublicKeyShare returns whether the PublicKeyShare's public key is valid given its VSS commitment to
+// the secret polynomial.
+func VerifyPublicKeyShare(p *keys.PublicKeyShare) bool {
+	return Verify(p.Group, p.ID, p.PublicKey, p.VssCommitment)
 }
 
 // PubKeyForCommitment computes the public key corresponding to the commitment of participant id.

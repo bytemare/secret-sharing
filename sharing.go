@@ -13,6 +13,8 @@ import (
 	"errors"
 
 	group "github.com/bytemare/crypto"
+
+	"github.com/bytemare/secret-sharing/keys"
 )
 
 var (
@@ -22,20 +24,21 @@ var (
 	errTooFewShares     = errors.New("number of shares must be equal or greater than the threshold")
 	errPolyIsWrongSize  = errors.New("invalid number of coefficients in polynomial")
 	errPolySecretNotSet = errors.New("provided polynomial's first coefficient not set to the secret")
+	errMultiGroup       = errors.New("incompatible EC groups found in set of key shares")
 )
 
-func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.Element) *KeyShare {
+func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.Element) *keys.KeyShare {
 	ids := g.NewScalar().SetUInt64(uint64(id))
 	yi := p.Evaluate(ids)
 
-	return &KeyShare{
+	return &keys.KeyShare{
 		Secret:         yi,
 		GroupPublicKey: groupPublicKey,
-		PublicKeyShare: PublicKeyShare{
-			PublicKey:  g.Base().Multiply(yi),
-			Commitment: nil,
-			ID:         id,
-			Group:      g,
+		PublicKeyShare: keys.PublicKeyShare{
+			PublicKey:     g.Base().Multiply(yi),
+			VssCommitment: nil,
+			ID:            id,
+			Group:         g,
 		},
 	}
 }
@@ -47,7 +50,7 @@ func Shard(
 	secret *group.Scalar,
 	threshold, max uint16,
 	polynomial ...*group.Scalar,
-) ([]*KeyShare, error) {
+) ([]*keys.KeyShare, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 
 	for _, pi := range p {
@@ -57,13 +60,13 @@ func Shard(
 	return shares, err
 }
 
-// ShardAndCommit does the same as Shard but populates the returned key shares with the Commitment to the polynomial.
+// ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
 // If no secret is provided, a new random secret is created.
 func ShardAndCommit(g group.Group,
 	secret *group.Scalar,
 	threshold, max uint16,
 	polynomial ...*group.Scalar,
-) ([]*KeyShare, error) {
+) ([]*keys.KeyShare, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 	if err != nil {
 		return nil, err
@@ -72,7 +75,7 @@ func ShardAndCommit(g group.Group,
 	commitment := Commit(g, p)
 
 	for _, share := range shares {
-		share.Commitment = commitment
+		share.VssCommitment = commitment
 	}
 
 	for _, pi := range p {
@@ -90,7 +93,7 @@ func ShardReturnPolynomial(
 	secret *group.Scalar,
 	threshold, max uint16,
 	polynomial ...*group.Scalar,
-) ([]*KeyShare, Polynomial, error) {
+) ([]*keys.KeyShare, Polynomial, error) {
 	if max < threshold {
 		return nil, nil, errTooFewShares
 	}
@@ -103,7 +106,7 @@ func ShardReturnPolynomial(
 	groupPublicKey := g.Base().Multiply(p[0])
 
 	// Evaluate the polynomial for each point x=1,...,n
-	secretKeyShares := make([]*KeyShare, max)
+	secretKeyShares := make([]*keys.KeyShare, max)
 
 	for i := uint16(1); i <= max; i++ {
 		secretKeyShares[i-1] = makeKeyShare(g, i, p, groupPublicKey)
@@ -112,30 +115,46 @@ func ShardReturnPolynomial(
 	return secretKeyShares, p, nil
 }
 
-// KeyShares is a set of KeyShares.
-type KeyShares []*KeyShare
-
-// Combine recovers the constant secret by combining the key shares.
-func (k KeyShares) Combine(g group.Group) (*group.Scalar, error) {
-	if len(k) == 0 {
-		return nil, errNoShares
-	}
-
-	s := make([]Share, len(k))
-	for i, ks := range k {
+// RecoverFromKeyShares recovers the constant secret by combining the key shares.
+func RecoverFromKeyShares(keyShares []*keys.KeyShare) (*group.Scalar, error) {
+	s := make([]keys.Share, len(keyShares))
+	for i, ks := range keyShares {
 		s[i] = ks
 	}
 
-	return CombineShares(g, s)
+	return CombineShares(s)
 }
 
-// CombineShares recovers the constant secret by combining the key shares using the Share interface.
-func CombineShares(g group.Group, shares []Share) (*group.Scalar, error) {
+// CombineShares recovers the sharded secret by combining the key shares that implement the Share interface. It recovers
+// the constant term of the interpolating polynomial defined by the set of key shares.
+func CombineShares(shares []keys.Share) (*group.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, errNoShares
 	}
 
-	return PolynomialInterpolateConstant(g, shares)
+	g := shares[0].Group()
+
+	xCoords := NewPolynomialFromListFunc(g, shares, func(share keys.Share) *group.Scalar {
+		return g.NewScalar().SetUInt64(uint64(share.Identifier()))
+	})
+
+	key := g.NewScalar().Zero()
+
+	for i, share := range shares {
+		if share.Group() != g {
+			return nil, errMultiGroup
+		}
+
+		iv, err := xCoords.DeriveInterpolatingValue(g, xCoords[i])
+		if err != nil {
+			return nil, err
+		}
+
+		delta := iv.Multiply(share.SecretKey())
+		key.Add(delta)
+	}
+
+	return key, nil
 }
 
 func makePolynomial(g group.Group, s *group.Scalar, threshold uint16, polynomial ...*group.Scalar) (Polynomial, error) {

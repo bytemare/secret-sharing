@@ -14,6 +14,7 @@ import (
 	group "github.com/bytemare/crypto"
 
 	secretsharing "github.com/bytemare/secret-sharing"
+	"github.com/bytemare/secret-sharing/keys"
 )
 
 // ExampleShard shows how to split a private key into shares and how to recombine it from a
@@ -34,12 +35,12 @@ func ExampleShard() {
 	}
 
 	// Assemble a subset of shares to recover the secret. We must use threshold or more shares.
-	subset := []secretsharing.Share{
+	subset := []keys.Share{
 		shares[5], shares[0], shares[3],
 	}
 
 	// Combine the subset of shares.
-	recovered, err := secretsharing.CombineShares(g, subset)
+	recovered, err := secretsharing.CombineShares(subset)
 	if err != nil {
 		panic(err)
 	}
@@ -77,7 +78,7 @@ func ExampleVerify() {
 		publicShare := keyshare.Public()
 
 		// Verify that the key share's public key is consistent with the commitment.
-		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.Commitment) {
+		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.VssCommitment) {
 			panic("invalid public key for shareholder")
 		}
 	}

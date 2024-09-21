@@ -1080,6 +1080,20 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 
 			testUnmarshalJSONErrorPrefix(t, new(secretsharing.PublicKeyShare), data, expectedErrorPrefix)
 
+			// UnmarshallJSON: bad sub decoding
+			data, err = json.Marshal(shares[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			badKey := getBadElement(t, g)
+			badKeyHex := hex.EncodeToString(badKey)
+
+			data = replaceStringInBytes(data, "\"publicKey\"", fmt.Sprintf("\"publicKey\":\"%s\",\"other\"", badKeyHex))
+			expectedErrorPrefix = errors.New("failed to decode PublicKeyShare: element DecodeHex: ")
+
+			testUnmarshalJSONErrorPrefix(t, new(secretsharing.PublicKeyShare), data, expectedErrorPrefix)
+
 			// UnmarshallJSON: no error on empty commitment
 			data, err = json.Marshal(shares[0])
 			if err != nil {

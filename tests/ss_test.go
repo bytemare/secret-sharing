@@ -914,7 +914,8 @@ func testUnmarshalJSONError(t *testing.T, s serde, data []byte, expectedError er
 }
 
 func testUnmarshalJSONErrorPrefix(t *testing.T, s serde, data []byte, expectedPrefix error) {
-	if err := json.Unmarshal(data, s); err == nil ||
+	err := json.Unmarshal(data, s)
+	if err == nil ||
 		!strings.HasPrefix(err.Error(), expectedPrefix.Error()) {
 		t.Fatalf("expected error %q, got %q", expectedPrefix, err)
 	}
@@ -1085,7 +1086,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			data = replaceStringInBytes(data, "\"commitment\"", "\"nope\"")
+			data = replaceStringInBytes(data, "\"vssCommitment\"", "\"nope\"")
 
 			if err = json.Unmarshal(data, new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
@@ -1097,7 +1098,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			data = replaceStringInBytes(data, "\"commitment\"", "\"commitment\":[],\"other\"")
+			data = replaceStringInBytes(data, "\"vssCommitment\"", "\"vssCommitment\":[],\"other\"")
 			if err = json.Unmarshal(data, new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
 			}
@@ -1109,7 +1110,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			data = replaceStringInBytes(data, "\"commitment\"", "\"nope\"")
+			data = replaceStringInBytes(data, "\"vssCommitment\"", "\"nope\"")
 
 			if err = json.Unmarshal(data, new(secretsharing.PublicKeyShare)); err != nil {
 				t.Fatalf("unexpected error %q", err)
@@ -1454,7 +1455,7 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			expectedErrorPrefix := errors.New(
 				"failed to decode PublicKeyShareRegistry: invalid group public key encoding: element Decode: ",
 			)
-			if err := d.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
+			if err = d.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
 
@@ -1464,7 +1465,7 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			expectedErrorPrefix = errors.New(
 				"failed to decode PublicKeyShareRegistry: could not decode public key share ",
 			)
-			if err := d.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
+			if err = d.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
 			}
 

@@ -19,19 +19,19 @@ import (
 	"strings"
 	"testing"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 
 	secretsharing "github.com/bytemare/secret-sharing"
 	"github.com/bytemare/secret-sharing/keys"
 )
 
-var groups = []group.Group{
-	group.Ristretto255Sha512,
-	group.P256Sha256,
-	group.Secp256k1,
+var groups = []ecc.Group{
+	ecc.Ristretto255Sha512,
+	ecc.P256Sha256,
+	ecc.Secp256k1Sha256,
 }
 
-func testCombine(secret *group.Scalar, shares []*keys.KeyShare) (error, bool) {
+func testCombine(secret *ecc.Scalar, shares []*keys.KeyShare) (error, bool) {
 	recovered1, err := secretsharing.RecoverFromKeyShares(shares)
 	if err != nil {
 		return err, false
@@ -47,11 +47,11 @@ func testCombine(secret *group.Scalar, shares []*keys.KeyShare) (error, bool) {
 		return err, false
 	}
 
-	if recovered1.Equal(recovered) != 1 {
+	if !recovered1.Equal(recovered) {
 		return errors.New("combine returned different results"), false
 	}
 
-	if recovered.Equal(secret) != 1 {
+	if !recovered.Equal(secret) {
 		return errors.New("invalid recovered secret"), false
 	}
 
@@ -112,13 +112,13 @@ func TestNewPolynomial_Ints(t *testing.T) {
 			pShares := secretsharing.NewPolynomialFromListFunc(
 				g,
 				shares,
-				func(share *keys.KeyShare) *group.Scalar {
+				func(share *keys.KeyShare) *ecc.Scalar {
 					return g.NewScalar().SetUInt64(uint64(share.ID))
 				},
 			)
 
 			for i := range maxParticipants {
-				if pRef[i].Equal(pInts[i]) != 1 || pRef[i].Equal(pShares[i]) != 1 {
+				if !pRef[i].Equal(pInts[i]) || !pRef[i].Equal(pShares[i]) {
 					t.Fatal("expected equality")
 				}
 			}
@@ -162,7 +162,7 @@ func TestCommitment(t *testing.T) {
 				pk := g.Base().Multiply(keyshare.Secret)
 
 				pubkey := keyshare.Public()
-				if pk.Equal(pubkey.PublicKey) != 1 {
+				if !pk.Equal(pubkey.PublicKey) {
 					t.Fatal("expected equality")
 				}
 
@@ -259,7 +259,7 @@ func TestVerify_BadCommitments(t *testing.T) {
 
 func TestShard_0_Secret(t *testing.T) {
 	expected := "the provided secret is zero"
-	g := group.Ristretto255Sha512
+	g := ecc.Ristretto255Sha512
 	if _, err := secretsharing.Shard(g, g.NewScalar(), 3, 5); err == nil || err.Error() != expected {
 		t.Fatalf("expected error %q, got %q", expected, err)
 	}
@@ -299,8 +299,8 @@ func TestShard_LowShares(t *testing.T) {
 	}
 }
 
-func testBadPolynomial(g group.Group, threshold, max uint16, p secretsharing.Polynomial, s ...*group.Scalar) error {
-	var secret *group.Scalar
+func testBadPolynomial(g ecc.Group, threshold, max uint16, p secretsharing.Polynomial, s ...*ecc.Scalar) error {
+	var secret *ecc.Scalar
 	if len(s) == 0 {
 		secret = g.NewScalar().Random()
 	} else {
@@ -594,7 +594,7 @@ func TestPubKeyForCommitment(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if pk.Equal(publicShare.PublicKey) != 1 {
+			if !pk.Equal(publicShare.PublicKey) {
 				t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
 			}
 
@@ -627,13 +627,13 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			}
 
 			// Provided commitment is empty
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{}); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*ecc.Element{}); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
 
 			// First element of commitment is nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*group.Element{nil}); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*ecc.Element{nil}); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -677,7 +677,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 }
 
 func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare) error {
-	if s1.PublicKey.Equal(s2.PublicKey) != 1 {
+	if !s1.PublicKey.Equal(s2.PublicKey) {
 		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey.Hex(), s2.PublicKey.Hex())
 	}
 
@@ -698,7 +698,7 @@ func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare) error {
 	}
 
 	for i := range s1.VssCommitment {
-		if s1.VssCommitment[i].Equal(s2.VssCommitment[i]) != 1 {
+		if !s1.VssCommitment[i].Equal(s2.VssCommitment[i]) {
 			return fmt.Errorf(
 				"Expected equality on VssCommitment %d:\n\t%s\n\t%s\n",
 				i,
@@ -712,11 +712,11 @@ func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare) error {
 }
 
 func compareKeyShares(s1, s2 *keys.KeyShare) error {
-	if s1.Secret.Equal(s2.Secret) != 1 {
+	if !s1.Secret.Equal(s2.Secret) {
 		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
 	}
 
-	if s1.GroupPublicKey.Equal(s2.GroupPublicKey) != 1 {
+	if !s1.GroupPublicKey.Equal(s2.GroupPublicKey) {
 		return fmt.Errorf(
 			"Expected equality on GroupPublicKey:\n\t%s\n\t%s\n",
 			s1.GroupPublicKey.Hex(),
@@ -949,7 +949,7 @@ func replaceStringInBytes(data []byte, old, new string) []byte {
 	return []byte(s)
 }
 
-func getBadNistElement(t *testing.T, g group.Group) []byte {
+func getBadNistElement(t *testing.T, g ecc.Group) []byte {
 	element := make([]byte, g.ElementLength())
 	if _, err := rand.Read(element); err != nil {
 		// We can as well not panic and try again in a loop and a counter to stop.
@@ -974,22 +974,21 @@ func getBadRistrettoElement() []byte {
 	return decoded
 }
 
-func getBadElement(t *testing.T, g group.Group) []byte {
+func getBadElement(t *testing.T, g ecc.Group) []byte {
 	switch g {
-	case group.Ristretto255Sha512:
+	case ecc.Ristretto255Sha512:
 		return getBadRistrettoElement()
 	default:
 		return getBadNistElement(t, g)
 	}
 }
 
-func getBadScalar(g group.Group) []byte {
-	order := g.Order()
-	o, _ := new(big.Int).SetString(order, 0)
-	o.Add(o, new(big.Int).SetInt64(10))
+func getBadScalar(g ecc.Group) []byte {
+	order := new(big.Int).SetBytes(g.Order())
+	order.Add(order, new(big.Int).SetInt64(10))
 	out := make([]byte, g.ScalarLength())
-	o.FillBytes(out)
-	if g == group.Ristretto255Sha512 || g == group.Edwards25519Sha512 {
+	order.FillBytes(out)
+	if g == ecc.Ristretto255Sha512 || g == ecc.Edwards25519Sha512 {
 		slices.Reverse(out)
 	}
 
@@ -1086,7 +1085,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			}
 
 			// UnmarshallJSON: excessive commitment length
-			shares[0].VssCommitment = make([]*group.Element, 65536)
+			shares[0].VssCommitment = make([]*ecc.Element, 65536)
 			for i := range 65536 {
 				shares[0].VssCommitment[i] = g.NewElement()
 			}
@@ -1298,7 +1297,7 @@ func compareRegistries(r1, r2 *keys.PublicKeyShareRegistry) error {
 		return errors.New("wrong header")
 	}
 
-	if r1.GroupPublicKey.Equal(r2.GroupPublicKey) != 1 {
+	if !r1.GroupPublicKey.Equal(r2.GroupPublicKey) {
 		return errors.New("wrong gpk")
 	}
 
@@ -1318,7 +1317,7 @@ func compareRegistries(r1, r2 *keys.PublicKeyShareRegistry) error {
 
 func makeRegistry(
 	t *testing.T,
-	g group.Group,
+	g ecc.Group,
 	threshold, maxParticipants uint16,
 	keyShares []*keys.KeyShare,
 ) *keys.PublicKeyShareRegistry {

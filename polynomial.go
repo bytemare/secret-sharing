@@ -11,7 +11,7 @@ package secretsharing
 import (
 	"errors"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 )
 
 var (
@@ -25,7 +25,7 @@ var (
 // Polynomial over scalars, represented as a list of t+1 coefficients, where t is the threshold.
 // The constant term is in the first position and the highest degree coefficient is in the last position.
 // All operations on the polynomial's coefficient are done modulo the scalar's group order.
-type Polynomial []*group.Scalar
+type Polynomial []*ecc.Scalar
 
 // NewPolynomial returns a slice of Scalars with the capacity to hold the desired coefficients.
 func NewPolynomial(coefficients uint16) Polynomial {
@@ -33,7 +33,7 @@ func NewPolynomial(coefficients uint16) Polynomial {
 }
 
 // NewPolynomialFromIntegers returns a Polynomial from a slice of uint16.
-func NewPolynomialFromIntegers(g group.Group, ints []uint16) Polynomial {
+func NewPolynomialFromIntegers(g ecc.Group, ints []uint16) Polynomial {
 	polynomial := make(Polynomial, len(ints))
 	for i, v := range ints {
 		polynomial[i] = g.NewScalar().SetUInt64(uint64(v))
@@ -42,9 +42,9 @@ func NewPolynomialFromIntegers(g group.Group, ints []uint16) Polynomial {
 	return polynomial
 }
 
-// NewPolynomialFromListFunc returns a Polynomial from the group.Scalar returned by f applied on each element
+// NewPolynomialFromListFunc returns a Polynomial from the ecc.Scalar returned by f applied on each element
 // of the slice.
-func NewPolynomialFromListFunc[S ~[]E, E any](g group.Group, s S, f func(E) *group.Scalar) Polynomial {
+func NewPolynomialFromListFunc[S ~[]E, E any](g ecc.Group, s S, f func(E) *ecc.Scalar) Polynomial {
 	polynomial := make(Polynomial, len(s))
 	for i, v := range s {
 		polynomial[i] = g.NewScalar().Set(f(v))
@@ -88,7 +88,7 @@ func (p Polynomial) Verify() error {
 }
 
 // VerifyInterpolatingInput checks compatibility of the input id with the polynomial. If not, an error is returned.
-func (p Polynomial) VerifyInterpolatingInput(id *group.Scalar) error {
+func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
 	if id == nil || id.IsZero() {
 		return errPolyXIsZero
 	}
@@ -105,9 +105,9 @@ func (p Polynomial) VerifyInterpolatingInput(id *group.Scalar) error {
 }
 
 // has returns whether s is a coefficient of the polynomial.
-func (p Polynomial) has(s *group.Scalar) bool {
+func (p Polynomial) has(s *ecc.Scalar) bool {
 	for _, si := range p {
-		if si.Equal(s) == 1 {
+		if si.Equal(s) {
 			return true
 		}
 	}
@@ -154,7 +154,7 @@ func (p Polynomial) hasDuplicates() bool {
 }
 
 // Evaluate evaluates the polynomial p at point x using Horner's method.
-func (p Polynomial) Evaluate(x *group.Scalar) *group.Scalar {
+func (p Polynomial) Evaluate(x *ecc.Scalar) *ecc.Scalar {
 	// since value is an accumulator and starts with 0, we can skip multiplying by x, and start from the end
 	value := p[len(p)-1].Copy()
 	for i := len(p) - 2; i >= 0; i-- {
@@ -167,7 +167,7 @@ func (p Polynomial) Evaluate(x *group.Scalar) *group.Scalar {
 
 // DeriveInterpolatingValue derives a value used for polynomial interpolation.
 // id and all the coefficients must be non-zero scalars.
-func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*group.Scalar, error) {
+func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (*ecc.Scalar, error) {
 	if err := p.VerifyInterpolatingInput(id); err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (p Polynomial) DeriveInterpolatingValue(g group.Group, id *group.Scalar) (*
 	denominator := g.NewScalar().One()
 
 	for _, coeff := range p {
-		if coeff.Equal(id) == 1 {
+		if coeff.Equal(id) {
 			continue
 		}
 

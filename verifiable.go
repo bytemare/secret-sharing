@@ -11,7 +11,7 @@ package secretsharing
 import (
 	"errors"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 
 	"github.com/bytemare/secret-sharing/keys"
 )
@@ -19,11 +19,11 @@ import (
 var errCommitmentNilElement = errors.New("commitment has nil element")
 
 // VssCommitment is the tuple defining a Verifiable Secret Sharing VssCommitment to a secret Polynomial.
-type VssCommitment []*group.Element
+type VssCommitment []*ecc.Element
 
 // Commit builds a Verifiable Secret Sharing vector VssCommitment to each of the coefficients
 // (of threshold length which uniquely determines the polynomial).
-func Commit(g group.Group, polynomial Polynomial) VssCommitment {
+func Commit(g ecc.Group, polynomial Polynomial) VssCommitment {
 	coms := make(VssCommitment, len(polynomial))
 	for i, coeff := range polynomial {
 		coms[i] = g.Base().Multiply(coeff)
@@ -33,13 +33,13 @@ func Commit(g group.Group, polynomial Polynomial) VssCommitment {
 }
 
 // Verify allows verification of participant id's public key given the VSS commitment to the secret polynomial.
-func Verify(g group.Group, id uint16, pk *group.Element, commitment []*group.Element) bool {
+func Verify(g ecc.Group, id uint16, pk *ecc.Element, commitment []*ecc.Element) bool {
 	v, err := PubKeyForCommitment(g, id, commitment)
 	if err != nil {
 		return false
 	}
 
-	return pk.Equal(v) == 1
+	return pk.Equal(v)
 }
 
 // VerifyPublicKeyShare returns whether the PublicKeyShare's public key is valid given its VSS commitment to
@@ -49,7 +49,7 @@ func VerifyPublicKeyShare(p *keys.PublicKeyShare) bool {
 }
 
 // PubKeyForCommitment computes the public key corresponding to the commitment of participant id.
-func PubKeyForCommitment(g group.Group, id uint16, commitment []*group.Element) (*group.Element, error) {
+func PubKeyForCommitment(g ecc.Group, id uint16, commitment []*ecc.Element) (*ecc.Element, error) {
 	if len(commitment) == 0 || commitment[0] == nil {
 		return nil, errCommitmentNilElement
 	}
@@ -73,7 +73,7 @@ func PubKeyForCommitment(g group.Group, id uint16, commitment []*group.Element) 
 	return pk, nil
 }
 
-func comPubKey(g group.Group, id uint16, pk *group.Element, commitment []*group.Element) (*group.Element, error) {
+func comPubKey(g ecc.Group, id uint16, pk *ecc.Element, commitment []*ecc.Element) (*ecc.Element, error) {
 	if commitment[1] == nil {
 		return nil, errCommitmentNilElement
 	}

@@ -11,7 +11,7 @@ package secretsharing_test
 import (
 	"fmt"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 
 	secretsharing "github.com/bytemare/secret-sharing"
 	"github.com/bytemare/secret-sharing/keys"
@@ -21,7 +21,7 @@ import (
 // subset of shares. For an example of Verifiable Secret Sharing, see ExampleVerify.
 func ExampleShard() {
 	// These are the configuration parameters
-	g := group.Ristretto255Sha512
+	g := ecc.Ristretto255Sha512
 	threshold := uint16(3)    // threshold is the minimum amount of necessary shares to recombine the secret
 	shareholders := uint16(7) // the max amount of key share-holders
 
@@ -45,7 +45,7 @@ func ExampleShard() {
 		panic(err)
 	}
 
-	if recovered.Equal(secret) != 1 {
+	if !recovered.Equal(secret) {
 		fmt.Println("ERROR: recovery failed")
 	} else {
 		fmt.Println("Key split into shares and recombined with a subset of shares!")
@@ -58,7 +58,7 @@ func ExampleShard() {
 // the generated public keys given the initial commitment.
 func ExampleVerify() {
 	// These are the configuration parameters
-	g := group.Ristretto255Sha512
+	g := ecc.Ristretto255Sha512
 	threshold := uint16(3)    // threshold is minimum amount of necessary shares to recombine the secret
 	shareholders := uint16(7) // the max amount of key share-holders
 

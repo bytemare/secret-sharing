@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 )
 
 var (
@@ -42,16 +42,16 @@ const errFmt = "%w: %w"
 // helper functions
 
 type shadowInit interface {
-	init(g group.Group, threshold uint16)
+	init(g ecc.Group, threshold uint16)
 }
 
 type publicKeyShareShadow PublicKeyShare
 
-func (p *publicKeyShareShadow) init(g group.Group, threshold uint16) {
+func (p *publicKeyShareShadow) init(g ecc.Group, threshold uint16) {
 	p.ID = 0
 	p.Group = g
 	p.PublicKey = g.NewElement()
-	p.VssCommitment = make([]*group.Element, threshold)
+	p.VssCommitment = make([]*ecc.Element, threshold)
 
 	for i := range threshold {
 		p.VssCommitment[i] = g.NewElement()
@@ -59,12 +59,12 @@ func (p *publicKeyShareShadow) init(g group.Group, threshold uint16) {
 }
 
 type keyShareShadow struct {
-	Secret         *group.Scalar  `json:"secret"`
-	GroupPublicKey *group.Element `json:"groupPublicKey"`
+	Secret         *ecc.Scalar  `json:"secret"`
+	GroupPublicKey *ecc.Element `json:"groupPublicKey"`
 	*publicKeyShareShadow
 }
 
-func (k *keyShareShadow) init(g group.Group, threshold uint16) {
+func (k *keyShareShadow) init(g ecc.Group, threshold uint16) {
 	p := new(publicKeyShareShadow)
 	p.init(g, threshold)
 	k.Secret = g.NewScalar()
@@ -74,11 +74,11 @@ func (k *keyShareShadow) init(g group.Group, threshold uint16) {
 
 type registryShadow PublicKeyShareRegistry
 
-func (r *registryShadow) init(g group.Group, _ uint16) {
+func (r *registryShadow) init(g ecc.Group, _ uint16) {
 	r.GroupPublicKey = g.NewElement()
 }
 
-func unmarshalJSONHeader(data []byte) (group.Group, uint16, error) {
+func unmarshalJSONHeader(data []byte) (ecc.Group, uint16, error) {
 	s := string(data)
 
 	g, err := jsonReGetGroup(s)
@@ -122,7 +122,7 @@ func jsonReGetField(key, s, catch string) (string, error) {
 }
 
 // jsonReGetGroup attempts to find the Group JSON encoding in s.
-func jsonReGetGroup(s string) (group.Group, error) {
+func jsonReGetGroup(s string) (ecc.Group, error) {
 	f, err := jsonReGetField("group", s, `(\w+)`)
 	if err != nil {
 		return 0, err
@@ -137,7 +137,7 @@ func jsonReGetGroup(s string) (group.Group, error) {
 		return 0, errEncodingInvalidGroup
 	}
 
-	g := group.Group(i)
+	g := ecc.Group(i)
 	if !g.Available() {
 		return 0, errEncodingInvalidGroup
 	}
@@ -163,12 +163,12 @@ func jsonRePolyLen(s string) int {
 	return n + 1
 }
 
-func decodeKeyShareHeader(data []byte) (group.Group, int, int, error) {
+func decodeKeyShareHeader(data []byte) (ecc.Group, int, int, error) {
 	if len(data) == 0 {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	g := group.Group(data[0])
+	g := ecc.Group(data[0])
 	if !g.Available() {
 		return 0, 0, 0, errEncodingInvalidGroup
 	}

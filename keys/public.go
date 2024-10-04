@@ -13,26 +13,26 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 )
 
 // PublicKeyShare specifies the public key of a participant identified with ID. This can be useful to keep a registry of
 // participants.
 type PublicKeyShare struct {
 	// The PublicKey of Secret belonging to the participant.
-	PublicKey *group.Element `json:"publicKey"`
+	PublicKey *ecc.Element `json:"publicKey"`
 
 	// The VssCommitment to the polynomial the key was created with.
-	VssCommitment []*group.Element `json:"vssCommitment,omitempty"`
+	VssCommitment []*ecc.Element `json:"vssCommitment,omitempty"`
 
 	// ID of the participant.
 	ID uint16 `json:"id"`
 
 	// Group specifies the elliptic curve group the elements are part of.
-	Group group.Group `json:"group"`
+	Group ecc.Group `json:"group"`
 }
 
-func publicKeyShareLength(g group.Group, polyLen int) int {
+func publicKeyShareLength(g ecc.Group, polyLen int) int {
 	eLen := g.ElementLength()
 	return 1 + 2 + 4 + eLen + polyLen*eLen
 }
@@ -57,7 +57,7 @@ func (p *PublicKeyShare) Hex() string {
 	return hex.EncodeToString(p.Encode())
 }
 
-func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
+func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
 	eLen := g.ElementLength()
 	id := binary.LittleEndian.Uint16(data[1:3])
 
@@ -67,7 +67,7 @@ func (p *PublicKeyShare) decode(g group.Group, cLen int, data []byte) error {
 	}
 
 	i := 0
-	commitment := make([]*group.Element, cLen)
+	commitment := make([]*ecc.Element, cLen)
 
 	for j := 7 + eLen; j < len(data); j += eLen {
 		c := g.NewElement()

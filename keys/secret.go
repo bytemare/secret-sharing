@@ -15,30 +15,30 @@ import (
 	"fmt"
 	"slices"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 )
 
 // The Share interface enables to use functions in this package with compatible key shares.
 type Share interface {
 	// Group returns the elliptic curve group used for this key share.
-	Group() group.Group
+	Group() ecc.Group
 
 	// Identifier returns the identity for this share.
 	Identifier() uint16
 
 	// SecretKey returns the participant's secret share.
-	SecretKey() *group.Scalar
+	SecretKey() *ecc.Scalar
 }
 
 // KeyShare holds the secret and public key share for a given participant.
 type KeyShare struct {
-	Secret         *group.Scalar  `json:"secret"`
-	GroupPublicKey *group.Element `json:"groupPublicKey"`
+	Secret         *ecc.Scalar  `json:"secret"`
+	GroupPublicKey *ecc.Element `json:"groupPublicKey"`
 	PublicKeyShare
 }
 
 // Group returns the elliptic curve group used for this key share.
-func (k *KeyShare) Group() group.Group {
+func (k *KeyShare) Group() ecc.Group {
 	return k.PublicKeyShare.Group
 }
 
@@ -48,7 +48,7 @@ func (k *KeyShare) Identifier() uint16 {
 }
 
 // SecretKey returns the participant's secret share.
-func (k *KeyShare) SecretKey() *group.Scalar {
+func (k *KeyShare) SecretKey() *ecc.Scalar {
 	return k.Secret
 }
 
@@ -116,7 +116,7 @@ func (k *KeyShare) DecodeHex(h string) error {
 	return k.Decode(b)
 }
 
-func (k *KeyShare) populate(s *group.Scalar, gpk *group.Element, pks *PublicKeyShare) {
+func (k *KeyShare) populate(s *ecc.Scalar, gpk *ecc.Element, pks *PublicKeyShare) {
 	k.Secret = s
 	k.GroupPublicKey = gpk
 	k.PublicKeyShare = *pks

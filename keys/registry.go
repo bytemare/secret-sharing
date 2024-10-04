@@ -13,21 +13,21 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 )
 
 // PublicKeyShareRegistry regroups the final public information about key shares and participants, enabling a registry
 // and public key verifications.
 type PublicKeyShareRegistry struct {
-	GroupPublicKey  *group.Element             `json:"groupPublicKey"`
+	GroupPublicKey  *ecc.Element               `json:"groupPublicKey"`
 	PublicKeyShares map[uint16]*PublicKeyShare `json:"publicKeyShares"`
 	Total           uint16                     `json:"total"`
 	Threshold       uint16                     `json:"threshold"`
-	Group           group.Group                `json:"group"`
+	Group           ecc.Group                  `json:"group"`
 }
 
 // NewPublicKeyShareRegistry returns a populated PublicKeyShareRegistry.
-func NewPublicKeyShareRegistry(g group.Group, threshold, total uint16) *PublicKeyShareRegistry {
+func NewPublicKeyShareRegistry(g ecc.Group, threshold, total uint16) *PublicKeyShareRegistry {
 	return &PublicKeyShareRegistry{
 		Group:           g,
 		Threshold:       threshold,
@@ -65,7 +65,7 @@ func (k *PublicKeyShareRegistry) Get(id uint16) *PublicKeyShare {
 }
 
 // VerifyPublicKey returns nil if the id / pubKey pair is registered, and an error otherwise.
-func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *group.Element) error {
+func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *ecc.Element) error {
 	for _, ks := range k.PublicKeyShares {
 		if ks.ID == id {
 			if pubKey == nil {
@@ -76,7 +76,7 @@ func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *group.Elemen
 				return fmt.Errorf("%w for ID %d", errRegistryHasNilPublicKey, id)
 			}
 
-			if ks.PublicKey.Equal(pubKey) != 1 {
+			if !ks.PublicKey.Equal(pubKey) {
 				return fmt.Errorf("%w for ID %d", errVerifyBadPubKey, id)
 			}
 
@@ -87,7 +87,7 @@ func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *group.Elemen
 	return fmt.Errorf("%w: %q", errVerifyUnknownID, id)
 }
 
-func registryByteSize(g group.Group, threshold, total uint16) (int, int) {
+func registryByteSize(g ecc.Group, threshold, total uint16) (int, int) {
 	eLen := g.ElementLength()
 	pksLen := 1 + 2 + 4 + eLen + int(threshold)*eLen
 
@@ -122,7 +122,7 @@ func (k *PublicKeyShareRegistry) Decode(data []byte) error {
 		return fmt.Errorf(errFmt, errRegistryDecodePrefix, errEncodingInvalidLength)
 	}
 
-	g := group.Group(data[0])
+	g := ecc.Group(data[0])
 	if !g.Available() {
 		return fmt.Errorf(errFmt, errRegistryDecodePrefix, errEncodingInvalidGroup)
 	}

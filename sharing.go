@@ -12,7 +12,7 @@ package secretsharing
 import (
 	"errors"
 
-	group "github.com/bytemare/crypto"
+	"github.com/bytemare/ecc"
 
 	"github.com/bytemare/secret-sharing/keys"
 )
@@ -27,7 +27,7 @@ var (
 	errMultiGroup       = errors.New("incompatible EC groups found in set of key shares")
 )
 
-func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.Element) *keys.KeyShare {
+func makeKeyShare(g ecc.Group, id uint16, p Polynomial, groupPublicKey *ecc.Element) *keys.KeyShare {
 	ids := g.NewScalar().SetUInt64(uint64(id))
 	yi := p.Evaluate(ids)
 
@@ -46,10 +46,10 @@ func makeKeyShare(g group.Group, id uint16, p Polynomial, groupPublicKey *group.
 // Shard splits the secret into max shares, recoverable by a subset of threshold shares. If no secret is provided, a
 // new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
 func Shard(
-	g group.Group,
-	secret *group.Scalar,
+	g ecc.Group,
+	secret *ecc.Scalar,
 	threshold, max uint16,
-	polynomial ...*group.Scalar,
+	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 
@@ -62,10 +62,10 @@ func Shard(
 
 // ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
 // If no secret is provided, a new random secret is created.
-func ShardAndCommit(g group.Group,
-	secret *group.Scalar,
+func ShardAndCommit(g ecc.Group,
+	secret *ecc.Scalar,
 	threshold, max uint16,
-	polynomial ...*group.Scalar,
+	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, error) {
 	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
 	if err != nil {
@@ -89,10 +89,10 @@ func ShardAndCommit(g group.Group,
 // the constructed secret polynomial without committing to it. If no secret is provided, a new random secret is created.
 // Use the Commit function if you want to commit to the returned polynomial.
 func ShardReturnPolynomial(
-	g group.Group,
-	secret *group.Scalar,
+	g ecc.Group,
+	secret *ecc.Scalar,
 	threshold, max uint16,
-	polynomial ...*group.Scalar,
+	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, Polynomial, error) {
 	if max < threshold {
 		return nil, nil, errTooFewShares
@@ -116,7 +116,7 @@ func ShardReturnPolynomial(
 }
 
 // RecoverFromKeyShares recovers the constant secret by combining the key shares.
-func RecoverFromKeyShares(keyShares []*keys.KeyShare) (*group.Scalar, error) {
+func RecoverFromKeyShares(keyShares []*keys.KeyShare) (*ecc.Scalar, error) {
 	s := make([]keys.Share, len(keyShares))
 	for i, ks := range keyShares {
 		s[i] = ks
@@ -127,14 +127,14 @@ func RecoverFromKeyShares(keyShares []*keys.KeyShare) (*group.Scalar, error) {
 
 // CombineShares recovers the sharded secret by combining the key shares that implement the Share interface. It recovers
 // the constant term of the interpolating polynomial defined by the set of key shares.
-func CombineShares(shares []keys.Share) (*group.Scalar, error) {
+func CombineShares(shares []keys.Share) (*ecc.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, errNoShares
 	}
 
 	g := shares[0].Group()
 
-	xCoords := NewPolynomialFromListFunc(g, shares, func(share keys.Share) *group.Scalar {
+	xCoords := NewPolynomialFromListFunc(g, shares, func(share keys.Share) *ecc.Scalar {
 		return g.NewScalar().SetUInt64(uint64(share.Identifier()))
 	})
 
@@ -157,7 +157,7 @@ func CombineShares(shares []keys.Share) (*group.Scalar, error) {
 	return key, nil
 }
 
-func makePolynomial(g group.Group, s *group.Scalar, threshold uint16, polynomial ...*group.Scalar) (Polynomial, error) {
+func makePolynomial(g ecc.Group, s *ecc.Scalar, threshold uint16, polynomial ...*ecc.Scalar) (Polynomial, error) {
 	if threshold == 0 {
 		return nil, errThresholdIsZero
 	}
@@ -181,7 +181,7 @@ func makePolynomial(g group.Group, s *group.Scalar, threshold uint16, polynomial
 			p[i] = g.NewScalar().Random()
 		}
 	case int(threshold):
-		if s != nil && polynomial[0].Equal(s) != 1 {
+		if s != nil && !polynomial[0].Equal(s) {
 			return nil, errPolySecretNotSet
 		}
 

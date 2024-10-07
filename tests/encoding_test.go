@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"testing"
 )
 
 func testDecodingBytesNilEmpty(decoder serde, expectedError string) error {
@@ -28,15 +29,31 @@ func testDecodingBytesNilEmpty(decoder serde, expectedError string) error {
 	return nil
 }
 
-func testDecodeBytesBadCiphersuite(decoder serde, headerLength int, expectedError string) error {
-	input := make([]byte, headerLength)
-	input[0] = 2
-
-	if err := decoder.Decode(input); err == nil || err.Error() != expectedError {
-		return fmt.Errorf("expected error %q, got %q", expectedError, err)
+func testDecodeHexFails(t *testing.T, thing1, thing2 serde, expectedErrorPrefix string) {
+	// empty string
+	if err := thing2.DecodeHex(""); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) {
+		t.Fatal("expected error on empty string")
 	}
 
-	return nil
+	// uneven length
+	expectedError := expectedErrorPrefix + " encoding/hex: odd length hex string"
+	e := thing1.Hex()
+
+	if err := thing2.DecodeHex(e[:len(e)-1]); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) {
+		t.Fatal("expected error on empty string")
+	}
+
+	// malformed string
+	expectedError = expectedErrorPrefix + " encoding/hex: invalid byte: U+005F '_'"
+	hexed := thing1.Hex()
+	malformed := []rune(hexed)
+	malformed[0] = []rune("_")[0]
+
+	if err := thing2.DecodeHex(string(malformed)); err == nil {
+		t.Fatal("expected error on malformed string")
+	} else if err.Error() != expectedError {
+		t.Fatalf("unexpected error: want %q, got %q", expectedError, err)
+	}
 }
 
 func testDecodeHexOddLength(encoder, decoder serde, expectedError string) error {

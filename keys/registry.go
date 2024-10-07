@@ -19,7 +19,7 @@ import (
 // PublicKeyShareRegistry regroups the final public information about key shares and participants, enabling a registry
 // and public key verifications.
 type PublicKeyShareRegistry struct {
-	GroupPublicKey  *ecc.Element               `json:"groupPublicKey"`
+	VerificationKey *ecc.Element               `json:"verificationKey"`
 	PublicKeyShares map[uint16]*PublicKeyShare `json:"publicKeyShares"`
 	Total           uint16                     `json:"total"`
 	Threshold       uint16                     `json:"threshold"`
@@ -32,7 +32,7 @@ func NewPublicKeyShareRegistry(g ecc.Group, threshold, total uint16) *PublicKeyS
 		Group:           g,
 		Threshold:       threshold,
 		Total:           total,
-		GroupPublicKey:  nil,
+		VerificationKey: nil,
 		PublicKeyShares: make(map[uint16]*PublicKeyShare, total),
 	}
 }
@@ -101,7 +101,7 @@ func (k *PublicKeyShareRegistry) Encode() []byte {
 	out[0] = byte(k.Group)
 	binary.LittleEndian.PutUint16(out[1:3], k.Total)
 	binary.LittleEndian.PutUint16(out[3:5], k.Threshold)
-	out = append(out, k.GroupPublicKey.Encode()...)
+	out = append(out, k.VerificationKey.Encode()...)
 
 	for _, pks := range k.PublicKeyShares {
 		out = append(out, pks.Encode()...)
@@ -162,7 +162,7 @@ func (k *PublicKeyShareRegistry) Decode(data []byte) error {
 	k.Group = g
 	k.Total = total
 	k.Threshold = threshold
-	k.GroupPublicKey = gpk
+	k.VerificationKey = gpk
 	k.PublicKeyShares = pks
 
 	return nil

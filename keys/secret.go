@@ -32,8 +32,8 @@ type Share interface {
 
 // KeyShare holds the secret and public key share for a given participant.
 type KeyShare struct {
-	Secret         *ecc.Scalar  `json:"secret"`
-	GroupPublicKey *ecc.Element `json:"groupPublicKey"`
+	Secret          *ecc.Scalar  `json:"secret"`
+	VerificationKey *ecc.Element `json:"verificationKey"`
 	PublicKeyShare
 }
 
@@ -64,7 +64,7 @@ func (k *KeyShare) Encode() []byte {
 	sLen := k.PublicKeyShare.Group.ScalarLength()
 	out := slices.Grow(pk, eLen+sLen)
 	out = append(out, k.Secret.Encode()...)
-	out = append(out, k.GroupPublicKey.Encode()...)
+	out = append(out, k.VerificationKey.Encode()...)
 
 	return out
 }
@@ -98,7 +98,7 @@ func (k *KeyShare) Decode(data []byte) error {
 
 	e := g.NewElement()
 	if err = e.Decode(data[pkLen+g.ScalarLength():]); err != nil {
-		return fmt.Errorf("%w: failed to decode GroupPublicKey: %w", errKeyShareDecodePrefix, err)
+		return fmt.Errorf("%w: failed to decode VerificationKey: %w", errKeyShareDecodePrefix, err)
 	}
 
 	k.populate(s, e, pk)
@@ -118,7 +118,7 @@ func (k *KeyShare) DecodeHex(h string) error {
 
 func (k *KeyShare) populate(s *ecc.Scalar, gpk *ecc.Element, pks *PublicKeyShare) {
 	k.Secret = s
-	k.GroupPublicKey = gpk
+	k.VerificationKey = gpk
 	k.PublicKeyShare = *pks
 }
 
@@ -129,7 +129,7 @@ func (k *KeyShare) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
-	k.populate(ks.Secret, ks.GroupPublicKey, (*PublicKeyShare)(ks.publicKeyShareShadow))
+	k.populate(ks.Secret, ks.VerificationKey, (*PublicKeyShare)(ks.publicKeyShareShadow))
 
 	return nil
 }

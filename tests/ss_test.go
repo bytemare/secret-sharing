@@ -716,11 +716,11 @@ func compareKeyShares(s1, s2 *keys.KeyShare) error {
 		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
 	}
 
-	if !s1.GroupPublicKey.Equal(s2.GroupPublicKey) {
+	if !s1.VerificationKey.Equal(s2.VerificationKey) {
 		return fmt.Errorf(
-			"Expected equality on GroupPublicKey:\n\t%s\n\t%s\n",
-			s1.GroupPublicKey.Hex(),
-			s2.GroupPublicKey.Hex(),
+			"Expected equality on VerificationKey:\n\t%s\n\t%s\n",
+			s1.VerificationKey.Hex(),
+			s2.VerificationKey.Hex(),
 		)
 	}
 
@@ -919,12 +919,6 @@ func testDecodeErrorPrefix(t *testing.T, s serde, data []byte, expectedPrefix st
 	if err := s.Decode(data); err == nil ||
 		!strings.HasPrefix(err.Error(), expectedPrefix) {
 		t.Fatalf("expected error %q, got %q", expectedPrefix, err)
-	}
-}
-
-func testDecodeHexError(t *testing.T, s serde, data, expectedError string) {
-	if err := s.DecodeHex(data); err == nil || err.Error() != expectedError {
-		t.Fatalf("expected error %q, got %q", expectedError, err)
 	}
 }
 
@@ -1159,14 +1153,13 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			offset += g.ScalarLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = "failed to decode KeyShare: failed to decode GroupPublicKey: element Decode: "
+			expectedErrorPrefix = "failed to decode KeyShare: failed to decode VerificationKey: element Decode: "
 
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
-			// Bad Hex
-			h := shares[0].Hex()
-			expectedErrorPrefix = "failed to decode KeyShare: encoding/hex: odd length hex string"
-			testDecodeHexError(t, decoded, h[:len(h)-1], expectedErrorPrefix)
+			// DecodeHex
+			expectedError := "failed to decode KeyShare:"
+			testDecodeHexFails(t, shares[0], decoded, expectedError)
 
 			// UnmarshallJSON: bad json
 			baddie := jsonTesterBaddie{
@@ -1297,7 +1290,7 @@ func compareRegistries(r1, r2 *keys.PublicKeyShareRegistry) error {
 		return errors.New("wrong header")
 	}
 
-	if !r1.GroupPublicKey.Equal(r2.GroupPublicKey) {
+	if !r1.VerificationKey.Equal(r2.VerificationKey) {
 		return errors.New("wrong gpk")
 	}
 
@@ -1328,7 +1321,7 @@ func makeRegistry(
 		}
 	}
 
-	registry.GroupPublicKey = keyShares[0].GroupPublicKey
+	registry.VerificationKey = keyShares[0].VerificationKey
 
 	return registry
 }
@@ -1452,12 +1445,9 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", errEncodingPKSDuplication, err)
 			}
 
-			// Hex: un-even length
-			h := registry.Hex()
-			expectedError := "failed to decode PublicKeyShareRegistry: encoding/hex: odd length hex string"
-			if err = decoded.DecodeHex(h[:len(h)-1]); err == nil || err.Error() != expectedError {
-				t.Fatalf("expected error %q, got %q", expectedError, err)
-			}
+			// DecodeHex
+			expectedError := "failed to decode PublicKeyShareRegistry:"
+			testDecodeHexFails(t, registry, decoded, expectedError)
 
 			// JSON: bad json
 			errInvalidJSON := "failed to decode PublicKeyShareRegistry: failed to decode PublicKeyShare: invalid JSON encoding"

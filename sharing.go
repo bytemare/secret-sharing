@@ -27,13 +27,13 @@ var (
 	errMultiGroup       = errors.New("incompatible EC groups found in set of key shares")
 )
 
-func makeKeyShare(g ecc.Group, id uint16, p Polynomial, groupPublicKey *ecc.Element) *keys.KeyShare {
+func makeKeyShare(g ecc.Group, id uint16, p Polynomial, verificationKey *ecc.Element) *keys.KeyShare {
 	ids := g.NewScalar().SetUInt64(uint64(id))
 	yi := p.Evaluate(ids)
 
 	return &keys.KeyShare{
-		Secret:         yi,
-		GroupPublicKey: groupPublicKey,
+		Secret:          yi,
+		VerificationKey: verificationKey,
 		PublicKeyShare: keys.PublicKeyShare{
 			PublicKey:     g.Base().Multiply(yi),
 			VssCommitment: nil,
@@ -103,13 +103,13 @@ func ShardReturnPolynomial(
 		return nil, nil, err
 	}
 
-	groupPublicKey := g.Base().Multiply(p[0])
+	verificationKey := g.Base().Multiply(p[0])
 
 	// Evaluate the polynomial for each point x=1,...,n
 	secretKeyShares := make([]*keys.KeyShare, max)
 
 	for i := uint16(1); i <= max; i++ {
-		secretKeyShares[i-1] = makeKeyShare(g, i, p, groupPublicKey)
+		secretKeyShares[i-1] = makeKeyShare(g, i, p, verificationKey)
 	}
 
 	return secretKeyShares, p, nil

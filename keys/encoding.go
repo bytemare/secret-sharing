@@ -59,8 +59,8 @@ func (p *publicKeyShareShadow) init(g ecc.Group, threshold uint16) {
 }
 
 type keyShareShadow struct {
-	Secret         *ecc.Scalar  `json:"secret"`
-	GroupPublicKey *ecc.Element `json:"groupPublicKey"`
+	Secret          *ecc.Scalar  `json:"secret"`
+	VerificationKey *ecc.Element `json:"verificationKey"`
 	*publicKeyShareShadow
 }
 
@@ -68,14 +68,14 @@ func (k *keyShareShadow) init(g ecc.Group, threshold uint16) {
 	p := new(publicKeyShareShadow)
 	p.init(g, threshold)
 	k.Secret = g.NewScalar()
-	k.GroupPublicKey = g.NewElement()
+	k.VerificationKey = g.NewElement()
 	k.publicKeyShareShadow = p
 }
 
 type registryShadow PublicKeyShareRegistry
 
 func (r *registryShadow) init(g ecc.Group, _ uint16) {
-	r.GroupPublicKey = g.NewElement()
+	r.VerificationKey = g.NewElement()
 }
 
 func unmarshalJSONHeader(data []byte) (ecc.Group, uint16, error) {

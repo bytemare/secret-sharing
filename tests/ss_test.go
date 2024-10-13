@@ -32,23 +32,9 @@ var groups = []ecc.Group{
 }
 
 func testCombine(secret *ecc.Scalar, shares []*keys.KeyShare) (error, bool) {
-	recovered1, err := secretsharing.RecoverFromKeyShares(shares)
+	recovered, err := secretsharing.CombineShares(shares)
 	if err != nil {
 		return err, false
-	}
-
-	s := make([]keys.Share, len(shares))
-	for i, k := range shares {
-		s[i] = k
-	}
-
-	recovered, err := secretsharing.CombineShares(s)
-	if err != nil {
-		return err, false
-	}
-
-	if !recovered1.Equal(recovered) {
-		return errors.New("combine returned different results"), false
 	}
 
 	if !recovered.Equal(secret) {
@@ -443,7 +429,7 @@ func TestCombine_TooFewShares(t *testing.T) {
 			}
 
 			// Zero shares
-			var shares []keys.Share
+			var shares []*keys.KeyShare
 			if _, err := secretsharing.CombineShares(shares); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
 			}
@@ -456,8 +442,8 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []keys.Share{
-				&keys.KeyShare{
+			badShare := []*keys.KeyShare{
+				{
 					Secret:         nil,
 					PublicKeyShare: keys.PublicKeyShare{ID: 0, Group: g},
 				},
@@ -488,12 +474,12 @@ func TestCombine_BadIdentifiers_Zero(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []keys.Share{
-				&keys.KeyShare{
+			badShare := []*keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
 				},
-				&keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 0, Group: g},
 				},
@@ -511,12 +497,12 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []keys.Share{
-				&keys.KeyShare{
+			badShare := []*keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
 				},
-				&keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
 				},
@@ -534,12 +520,12 @@ func TestCombine_WrongGroup(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []keys.Share{
-				&keys.KeyShare{
+			badShare := []*keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
 				},
-				&keys.KeyShare{
+				{
 					Secret:         g.NewScalar().Random(),
 					PublicKeyShare: keys.PublicKeyShare{ID: 2, Group: g + 1},
 				},

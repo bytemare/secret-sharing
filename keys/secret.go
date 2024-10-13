@@ -18,18 +18,6 @@ import (
 	"github.com/bytemare/ecc"
 )
 
-// The Share interface enables to use functions in this package with compatible key shares.
-type Share interface {
-	// Group returns the elliptic curve group used for this key share.
-	Group() ecc.Group
-
-	// Identifier returns the identity for this share.
-	Identifier() uint16
-
-	// SecretKey returns the participant's secret share.
-	SecretKey() *ecc.Scalar
-}
-
 // KeyShare holds the secret and public key share for a given participant.
 type KeyShare struct {
 	Secret          *ecc.Scalar  `json:"secret"`

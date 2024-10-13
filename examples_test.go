@@ -35,7 +35,7 @@ func ExampleShard() {
 	}
 
 	// Assemble a subset of shares to recover the secret. We must use threshold or more shares.
-	subset := []keys.Share{
+	subset := []*keys.KeyShare{
 		shares[5], shares[0], shares[3],
 	}
 

@@ -27,7 +27,7 @@ var (
 	errMultiGroup       = errors.New("incompatible EC groups found in set of key shares")
 )
 
-func makeKeyShare(g ecc.Group, id uint16, p Polynomial, verificationKey *ecc.Element) *keys.KeyShare {
+func makeKeyShare(g ecc.Group, id uint16, p Polynomial, verificationKey *ecc.Element, c VssCommitment) *keys.KeyShare {
 	ids := g.NewScalar().SetUInt64(uint64(id))
 	yi := p.Evaluate(ids)
 
@@ -36,62 +36,17 @@ func makeKeyShare(g ecc.Group, id uint16, p Polynomial, verificationKey *ecc.Ele
 		VerificationKey: verificationKey,
 		PublicKeyShare: keys.PublicKeyShare{
 			PublicKey:     g.Base().Multiply(yi),
-			VssCommitment: nil,
+			VssCommitment: c,
 			ID:            id,
 			Group:         g,
 		},
 	}
 }
 
-// Shard splits the secret into max shares, recoverable by a subset of threshold shares. If no secret is provided, a
-// new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
-func Shard(
-	g ecc.Group,
+func innerShard(g ecc.Group,
 	secret *ecc.Scalar,
 	threshold, max uint16,
-	polynomial ...*ecc.Scalar,
-) ([]*keys.KeyShare, error) {
-	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
-
-	for _, pi := range p {
-		pi.Zero() // zero-out the polynomial, just to be sure.
-	}
-
-	return shares, err
-}
-
-// ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
-// If no secret is provided, a new random secret is created.
-func ShardAndCommit(g ecc.Group,
-	secret *ecc.Scalar,
-	threshold, max uint16,
-	polynomial ...*ecc.Scalar,
-) ([]*keys.KeyShare, error) {
-	shares, p, err := ShardReturnPolynomial(g, secret, threshold, max, polynomial...)
-	if err != nil {
-		return nil, err
-	}
-
-	commitment := Commit(g, p)
-
-	for _, share := range shares {
-		share.VssCommitment = commitment
-	}
-
-	for _, pi := range p {
-		pi.Zero() // zero-out the polynomial, just to be sure.
-	}
-
-	return shares, nil
-}
-
-// ShardReturnPolynomial splits the secret into max shares, recoverable by a subset of threshold shares, and returns
-// the constructed secret polynomial without committing to it. If no secret is provided, a new random secret is created.
-// Use the Commit function if you want to commit to the returned polynomial.
-func ShardReturnPolynomial(
-	g ecc.Group,
-	secret *ecc.Scalar,
-	threshold, max uint16,
+	commit, returnPoly bool,
 	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, Polynomial, error) {
 	if max < threshold {
@@ -103,38 +58,79 @@ func ShardReturnPolynomial(
 		return nil, nil, err
 	}
 
-	verificationKey := g.Base().Multiply(p[0])
+	var commitment VssCommitment
+	var verificationKey *ecc.Element
+
+	if commit {
+		commitment = Commit(g, p)
+		verificationKey = commitment[0]
+	} else {
+		verificationKey = g.Base().Multiply(p[0])
+	}
 
 	// Evaluate the polynomial for each point x=1,...,n
 	secretKeyShares := make([]*keys.KeyShare, max)
 
 	for i := uint16(1); i <= max; i++ {
-		secretKeyShares[i-1] = makeKeyShare(g, i, p, verificationKey)
+		secretKeyShares[i-1] = makeKeyShare(g, i, p, verificationKey, commitment)
 	}
 
-	return secretKeyShares, p, nil
+	if returnPoly {
+		return secretKeyShares, p, nil
+	}
+
+	for _, pi := range p {
+		pi.Zero() // zero-out the polynomial, just to be sure.
+	}
+
+	return secretKeyShares, nil, nil
 }
 
-// RecoverFromKeyShares recovers the constant secret by combining the key shares.
-func RecoverFromKeyShares(keyShares []*keys.KeyShare) (*ecc.Scalar, error) {
-	s := make([]keys.Share, len(keyShares))
-	for i, ks := range keyShares {
-		s[i] = ks
-	}
+// Shard splits the secret into max shares, recoverable by a subset of threshold shares. If no secret is provided, a
+// new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
+func Shard(
+	g ecc.Group,
+	secret *ecc.Scalar,
+	threshold, max uint16,
+	polynomial ...*ecc.Scalar,
+) ([]*keys.KeyShare, error) {
+	shares, _, err := innerShard(g, secret, threshold, max, false, false, polynomial...)
+	return shares, err
+}
 
-	return CombineShares(s)
+// ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
+// If no secret is provided, a new random secret is created.
+func ShardAndCommit(g ecc.Group,
+	secret *ecc.Scalar,
+	threshold, max uint16,
+	polynomial ...*ecc.Scalar,
+) ([]*keys.KeyShare, error) {
+	shares, _, err := innerShard(g, secret, threshold, max, true, false, polynomial...)
+	return shares, err
+}
+
+// ShardReturnPolynomial splits the secret into max shares, recoverable by a subset of threshold shares, and returns
+// the constructed secret polynomial without committing to it. If no secret is provided, a new random secret is created.
+// Use the Commit function if you want to commit to the returned polynomial.
+func ShardReturnPolynomial(
+	g ecc.Group,
+	secret *ecc.Scalar,
+	threshold, max uint16,
+	polynomial ...*ecc.Scalar,
+) ([]*keys.KeyShare, Polynomial, error) {
+	return innerShard(g, secret, threshold, max, false, true, polynomial...)
 }
 
 // CombineShares recovers the sharded secret by combining the key shares that implement the Share interface. It recovers
 // the constant term of the interpolating polynomial defined by the set of key shares.
-func CombineShares(shares []keys.Share) (*ecc.Scalar, error) {
+func CombineShares(shares []*keys.KeyShare) (*ecc.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, errNoShares
 	}
 
 	g := shares[0].Group()
 
-	xCoords := NewPolynomialFromListFunc(g, shares, func(share keys.Share) *ecc.Scalar {
+	xCoords := NewPolynomialFromListFunc(g, shares, func(share *keys.KeyShare) *ecc.Scalar {
 		return g.NewScalar().SetUInt64(uint64(share.Identifier()))
 	})
 

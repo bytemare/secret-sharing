@@ -11,6 +11,7 @@ package secretsharing
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/bytemare/ecc"
 
@@ -45,11 +46,11 @@ func makeKeyShare(g ecc.Group, id uint16, p Polynomial, verificationKey *ecc.Ele
 
 func innerShard(g ecc.Group,
 	secret *ecc.Scalar,
-	threshold, max uint16,
+	threshold, maximum uint16,
 	commit, returnPoly bool,
 	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, Polynomial, error) {
-	if max < threshold {
+	if maximum < threshold {
 		return nil, nil, errTooFewShares
 	}
 
@@ -58,8 +59,10 @@ func innerShard(g ecc.Group,
 		return nil, nil, err
 	}
 
-	var commitment VssCommitment
-	var verificationKey *ecc.Element
+	var (
+		commitment      VssCommitment
+		verificationKey *ecc.Element
+	)
 
 	if commit {
 		commitment = Commit(g, p)
@@ -69,9 +72,9 @@ func innerShard(g ecc.Group,
 	}
 
 	// Evaluate the polynomial for each point x=1,...,n
-	secretKeyShares := make([]*keys.KeyShare, max)
+	secretKeyShares := make([]*keys.KeyShare, maximum)
 
-	for i := uint16(1); i <= max; i++ {
+	for i := uint16(1); i <= maximum; i++ {
 		secretKeyShares[i-1] = makeKeyShare(g, i, p, verificationKey, commitment)
 	}
 
@@ -79,9 +82,12 @@ func innerShard(g ecc.Group,
 		return secretKeyShares, p, nil
 	}
 
-	for _, pi := range p {
-		pi.Zero() // zero-out the polynomial, just to be sure.
+	// Zero-out the polynomial, just to be sure.
+	for _, pi := range p[1:] {
+		pi.Zero()
 	}
+
+	_ = slices.Delete(p, 0, len(p))
 
 	return secretKeyShares, nil, nil
 }
@@ -91,10 +97,10 @@ func innerShard(g ecc.Group,
 func Shard(
 	g ecc.Group,
 	secret *ecc.Scalar,
-	threshold, max uint16,
+	threshold, maximum uint16,
 	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, error) {
-	shares, _, err := innerShard(g, secret, threshold, max, false, false, polynomial...)
+	shares, _, err := innerShard(g, secret, threshold, maximum, false, false, polynomial...)
 	return shares, err
 }
 
@@ -102,10 +108,10 @@ func Shard(
 // If no secret is provided, a new random secret is created.
 func ShardAndCommit(g ecc.Group,
 	secret *ecc.Scalar,
-	threshold, max uint16,
+	threshold, maximum uint16,
 	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, error) {
-	shares, _, err := innerShard(g, secret, threshold, max, true, false, polynomial...)
+	shares, _, err := innerShard(g, secret, threshold, maximum, true, false, polynomial...)
 	return shares, err
 }
 
@@ -115,10 +121,22 @@ func ShardAndCommit(g ecc.Group,
 func ShardReturnPolynomial(
 	g ecc.Group,
 	secret *ecc.Scalar,
-	threshold, max uint16,
+	threshold, maximum uint16,
 	polynomial ...*ecc.Scalar,
 ) ([]*keys.KeyShare, Polynomial, error) {
-	return innerShard(g, secret, threshold, max, false, true, polynomial...)
+	return innerShard(g, secret, threshold, maximum, false, true, polynomial...)
+}
+
+// ShardAndCommitAndReturnPolynomial splits the secret into max shares, recoverable by a subset of threshold shares,
+// and returns the constructed secret polynomial. Each KeyShare holds the commitment to that polynomial. If no secret is
+// provided, a new random secret is created.
+func ShardAndCommitAndReturnPolynomial(
+	g ecc.Group,
+	secret *ecc.Scalar,
+	threshold, maximum uint16,
+	polynomial ...*ecc.Scalar,
+) ([]*keys.KeyShare, Polynomial, error) {
+	return innerShard(g, secret, threshold, maximum, true, true, polynomial...)
 }
 
 // CombineShares recovers the sharded secret by combining the key shares that implement the Share interface. It recovers
@@ -177,12 +195,12 @@ func makePolynomial(g ecc.Group, s *ecc.Scalar, threshold uint16, polynomial ...
 			p[i] = g.NewScalar().Random()
 		}
 	case int(threshold):
-		if s != nil && !polynomial[0].Equal(s) {
-			return nil, errPolySecretNotSet
-		}
-
 		if err := copyPolynomial(p, polynomial); err != nil {
 			return nil, err
+		}
+
+		if s != nil && !polynomial[0].Equal(s) {
+			return nil, errPolySecretNotSet
 		}
 	default:
 		return nil, errPolyIsWrongSize

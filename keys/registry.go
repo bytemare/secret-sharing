@@ -87,9 +87,9 @@ func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *ecc.Element)
 	return fmt.Errorf("%w: %q", errVerifyUnknownID, id)
 }
 
-func registryByteSize(g ecc.Group, threshold, total uint16) (int, int) {
+func registryByteSize(g ecc.Group, threshold, total uint16) (size, pksLen int) {
 	eLen := g.ElementLength()
-	pksLen := 1 + 2 + 4 + eLen + int(threshold)*eLen
+	pksLen = 1 + 2 + 4 + eLen + int(threshold)*eLen
 
 	return 1 + 2 + 2 + g.ElementLength() + int(total)*pksLen, pksLen
 }

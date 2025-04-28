@@ -57,36 +57,6 @@ func (p *PublicKeyShare) Hex() string {
 	return hex.EncodeToString(p.Encode())
 }
 
-func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
-	eLen := g.ElementLength()
-	id := binary.LittleEndian.Uint16(data[1:3])
-
-	pk := g.NewElement()
-	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
-		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
-	}
-
-	i := 0
-	commitment := make([]*ecc.Element, cLen)
-
-	for j := 7 + eLen; j < len(data); j += eLen {
-		c := g.NewElement()
-		if err := c.Decode(data[j : j+eLen]); err != nil {
-			return fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
-		}
-
-		commitment[i] = c
-		i++
-	}
-
-	p.Group = g
-	p.ID = id
-	p.PublicKey = pk
-	p.VssCommitment = commitment
-
-	return nil
-}
-
 // Decode deserializes the compact encoding obtained from Encode(), or returns an error.
 func (p *PublicKeyShare) Decode(data []byte) error {
 	g, expectedLength, cLen, err := decodeKeyShareHeader(data)
@@ -119,6 +89,36 @@ func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 	}
 
 	*p = PublicKeyShare(*ps)
+
+	return nil
+}
+
+func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
+	eLen := g.ElementLength()
+	id := binary.LittleEndian.Uint16(data[1:3])
+
+	pk := g.NewElement()
+	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
+		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
+	}
+
+	i := 0
+	commitment := make([]*ecc.Element, cLen)
+
+	for j := 7 + eLen; j < len(data); j += eLen {
+		c := g.NewElement()
+		if err := c.Decode(data[j : j+eLen]); err != nil {
+			return fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
+		}
+
+		commitment[i] = c
+		i++
+	}
+
+	p.Group = g
+	p.ID = id
+	p.PublicKey = pk
+	p.VssCommitment = commitment
 
 	return nil
 }

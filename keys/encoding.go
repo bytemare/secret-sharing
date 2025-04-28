@@ -163,12 +163,12 @@ func jsonRePolyLen(s string) int {
 	return n + 1
 }
 
-func decodeKeyShareHeader(data []byte) (ecc.Group, int, int, error) {
+func decodeKeyShareHeader(data []byte) (g ecc.Group, pksLen, comLen int, err error) {
 	if len(data) == 0 {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	g := ecc.Group(data[0])
+	g = ecc.Group(data[0])
 	if !g.Available() {
 		return 0, 0, 0, errEncodingInvalidGroup
 	}
@@ -177,8 +177,8 @@ func decodeKeyShareHeader(data []byte) (ecc.Group, int, int, error) {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	cLen := int(binary.LittleEndian.Uint32(data[3:7]))
-	pksLen := publicKeyShareLength(g, cLen)
+	comLen = int(binary.LittleEndian.Uint32(data[3:7]))
+	pksLen = publicKeyShareLength(g, comLen)
 
-	return g, pksLen, cLen, nil
+	return g, pksLen, comLen, nil
 }

@@ -104,12 +104,6 @@ func (k *KeyShare) DecodeHex(h string) error {
 	return k.Decode(b)
 }
 
-func (k *KeyShare) populate(s *ecc.Scalar, gpk *ecc.Element, pks *PublicKeyShare) {
-	k.Secret = s
-	k.VerificationKey = gpk
-	k.PublicKeyShare = *pks
-}
-
 // UnmarshalJSON decodes data into k, or returns an error.
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	ks := new(keyShareShadow)
@@ -120,4 +114,10 @@ func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	k.populate(ks.Secret, ks.VerificationKey, (*PublicKeyShare)(ks.publicKeyShareShadow))
 
 	return nil
+}
+
+func (k *KeyShare) populate(s *ecc.Scalar, gpk *ecc.Element, pks *PublicKeyShare) {
+	k.Secret = s
+	k.VerificationKey = gpk
+	k.PublicKeyShare = *pks
 }

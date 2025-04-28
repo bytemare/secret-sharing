@@ -1,6 +1,6 @@
 module github.com/bytemare/secret-sharing
 
-go 1.23.1
+go 1.24.2
 
 require github.com/bytemare/ecc v0.8.2
 

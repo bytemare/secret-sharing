@@ -21,8 +21,9 @@ import (
 
 	"github.com/bytemare/ecc"
 
-	secretsharing "github.com/bytemare/secret-sharing"
 	"github.com/bytemare/secret-sharing/keys"
+
+	secretsharing "github.com/bytemare/secret-sharing"
 )
 
 var groups = []ecc.Group{
@@ -131,6 +132,103 @@ func TestSecretSharing_WithPolynomial(t *testing.T) {
 	}
 }
 
+func TestShardings(t *testing.T) {
+	threshold := uint16(3)
+	maxParticipants := uint16(5)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(tt *testing.T) {
+			secret := g.NewScalar().Random()
+			polynomial := make(secretsharing.Polynomial, threshold)
+
+			polynomial[0] = secret
+			for i := range polynomial[1:] {
+				polynomial[i+1] = g.NewScalar().Random()
+			}
+
+			shares1, err := secretsharing.Shard(g, secret, threshold, maxParticipants, polynomial...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			shares2, err := secretsharing.ShardAndCommit(g, secret, threshold, maxParticipants, polynomial...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(shares1) != len(shares2) {
+				t.Fatal("shares length mismatch")
+			}
+
+			for i := range shares1 {
+				if err = compareKeyShares(shares1[i], shares2[i], false); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			shares3, poly1, err := secretsharing.ShardReturnPolynomial(
+				g,
+				secret,
+				threshold,
+				maxParticipants,
+				polynomial...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(shares1) != len(shares3) {
+				t.Fatal("shares length mismatch")
+			}
+
+			if len(poly1) != len(polynomial) {
+				t.Fatal("polynomial length mismatch")
+			}
+
+			for i, p := range polynomial {
+				if !p.Equal(poly1[i]) {
+					t.Fatal("expected match")
+				}
+			}
+
+			for i := range shares1 {
+				if err = compareKeyShares(shares1[i], shares3[i], true); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			shares4, poly2, err := secretsharing.ShardAndCommitAndReturnPolynomial(
+				g,
+				secret,
+				threshold,
+				maxParticipants,
+				polynomial...)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(shares2) != len(shares4) {
+				t.Fatal("shares length mismatch")
+			}
+
+			if len(poly2) != len(polynomial) {
+				t.Fatal("polynomial length mismatch")
+			}
+
+			for i, p := range polynomial {
+				if !p.Equal(poly2[i]) {
+					t.Fatal("expected match")
+				}
+			}
+
+			for i := range shares2 {
+				if err = compareKeyShares(shares2[i], shares4[i], true); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestCommitment(t *testing.T) {
 	threshold := uint16(3)
 	maxParticipants := uint16(5)
@@ -151,6 +249,16 @@ func TestCommitment(t *testing.T) {
 				if !pk.Equal(pubkey.PublicKey) {
 					t.Fatal("expected equality")
 				}
+
+				v, err := secretsharing.PubKeyForCommitment(pubkey.Group, pubkey.ID, pubkey.VssCommitment)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				t.Log(len(pubkey.VssCommitment))
+				t.Log(v.Hex())
+				t.Log(pubkey.PublicKey.Hex())
+				t.Log(pk.Hex())
 
 				if !secretsharing.VerifyPublicKeyShare(pubkey) {
 					t.Fatalf("invalid public key for shareholder %d", i)
@@ -662,7 +770,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 	}
 }
 
-func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare) error {
+func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare, compareCommitments bool) error {
 	if !s1.PublicKey.Equal(s2.PublicKey) {
 		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey.Hex(), s2.PublicKey.Hex())
 	}
@@ -675,29 +783,31 @@ func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare) error {
 		return fmt.Errorf("Expected equality on Group:\n\t%v\n\t%v\n", s1.Group, s2.Group)
 	}
 
-	if len(s1.VssCommitment) != len(s2.VssCommitment) {
-		return fmt.Errorf(
-			"Expected equality on VssCommitment length:\n\t%d\n\t%d\n",
-			len(s1.VssCommitment),
-			len(s2.VssCommitment),
-		)
-	}
-
-	for i := range s1.VssCommitment {
-		if !s1.VssCommitment[i].Equal(s2.VssCommitment[i]) {
+	if compareCommitments {
+		if len(s1.VssCommitment) != len(s2.VssCommitment) {
 			return fmt.Errorf(
-				"Expected equality on VssCommitment %d:\n\t%s\n\t%s\n",
-				i,
-				s1.VssCommitment[i].Hex(),
-				s2.VssCommitment[i].Hex(),
+				"Expected equality on VssCommitment length:\n\t%d\n\t%d\n",
+				len(s1.VssCommitment),
+				len(s2.VssCommitment),
 			)
+		}
+
+		for i := range s1.VssCommitment {
+			if !s1.VssCommitment[i].Equal(s2.VssCommitment[i]) {
+				return fmt.Errorf(
+					"Expected equality on VssCommitment %d:\n\t%s\n\t%s\n",
+					i,
+					s1.VssCommitment[i].Hex(),
+					s2.VssCommitment[i].Hex(),
+				)
+			}
 		}
 	}
 
 	return nil
 }
 
-func compareKeyShares(s1, s2 *keys.KeyShare) error {
+func compareKeyShares(s1, s2 *keys.KeyShare, compareCommitments bool) error {
 	if !s1.Secret.Equal(s2.Secret) {
 		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
 	}
@@ -710,7 +820,7 @@ func compareKeyShares(s1, s2 *keys.KeyShare) error {
 		)
 	}
 
-	return comparePublicKeyShare(&s1.PublicKeyShare, &s2.PublicKeyShare)
+	return comparePublicKeyShare(&s1.PublicKeyShare, &s2.PublicKeyShare, compareCommitments)
 }
 
 func TestEncoding_Bytes(t *testing.T) {
@@ -736,7 +846,7 @@ func TestEncoding_Bytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -748,7 +858,7 @@ func TestEncoding_Bytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = compareKeyShares(shares[0], decodedKS); err != nil {
+			if err = compareKeyShares(shares[0], decodedKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -791,7 +901,7 @@ func TestEncoding_Hex(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -803,7 +913,7 @@ func TestEncoding_Hex(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = compareKeyShares(shares[0], decodedKS); err != nil {
+			if err = compareKeyShares(shares[0], decodedKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -849,7 +959,7 @@ func TestEncoding_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS); err != nil {
+			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -864,7 +974,7 @@ func TestEncoding_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err = compareKeyShares(shares[0], decodedKS); err != nil {
+			if err = compareKeyShares(shares[0], decodedKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1286,7 +1396,7 @@ func compareRegistries(r1, r2 *keys.PublicKeyShareRegistry) error {
 
 	for i, pks := range r1.PublicKeyShares {
 		pks2 := r2.PublicKeyShares[i]
-		if err := comparePublicKeyShare(pks, pks2); err != nil {
+		if err := comparePublicKeyShare(pks, pks2, true); err != nil {
 			return err
 		}
 	}

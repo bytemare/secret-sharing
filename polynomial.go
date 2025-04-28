@@ -104,6 +104,40 @@ func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
 	return nil
 }
 
+// Evaluate evaluates the polynomial p at point x using Horner's method.
+func (p Polynomial) Evaluate(x *ecc.Scalar) *ecc.Scalar {
+	// since value is an accumulator and starts with 0, we can skip multiplying by x, and start from the end
+	value := p[len(p)-1].Copy()
+	for i := len(p) - 2; i >= 0; i-- {
+		value.Multiply(x)
+		value.Add(p[i])
+	}
+
+	return value
+}
+
+// DeriveInterpolatingValue derives a value used for polynomial interpolation.
+// id and all the coefficients must be non-zero scalars.
+func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (*ecc.Scalar, error) {
+	if err := p.VerifyInterpolatingInput(id); err != nil {
+		return nil, err
+	}
+
+	numerator := g.NewScalar().One()
+	denominator := g.NewScalar().One()
+
+	for _, coeff := range p {
+		if coeff.Equal(id) {
+			continue
+		}
+
+		numerator.Multiply(coeff)
+		denominator.Multiply(coeff.Copy().Subtract(id))
+	}
+
+	return numerator.Multiply(denominator.Invert()), nil
+}
+
 // has returns whether s is a coefficient of the polynomial.
 func (p Polynomial) has(s *ecc.Scalar) bool {
 	for _, si := range p {
@@ -151,38 +185,4 @@ func (p Polynomial) hasDuplicates() bool {
 	}
 
 	return false
-}
-
-// Evaluate evaluates the polynomial p at point x using Horner's method.
-func (p Polynomial) Evaluate(x *ecc.Scalar) *ecc.Scalar {
-	// since value is an accumulator and starts with 0, we can skip multiplying by x, and start from the end
-	value := p[len(p)-1].Copy()
-	for i := len(p) - 2; i >= 0; i-- {
-		value.Multiply(x)
-		value.Add(p[i])
-	}
-
-	return value
-}
-
-// DeriveInterpolatingValue derives a value used for polynomial interpolation.
-// id and all the coefficients must be non-zero scalars.
-func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (*ecc.Scalar, error) {
-	if err := p.VerifyInterpolatingInput(id); err != nil {
-		return nil, err
-	}
-
-	numerator := g.NewScalar().One()
-	denominator := g.NewScalar().One()
-
-	for _, coeff := range p {
-		if coeff.Equal(id) {
-			continue
-		}
-
-		numerator.Multiply(coeff)
-		denominator.Multiply(coeff.Copy().Subtract(id))
-	}
-
-	return numerator.Multiply(denominator.Invert()), nil
 }

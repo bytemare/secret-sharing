@@ -10,6 +10,7 @@ package secretsharing
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/bytemare/ecc"
 
@@ -55,16 +56,18 @@ func PubKeyForCommitment(g ecc.Group, id uint16, commitment []*ecc.Element) (*ec
 	}
 
 	pk := commitment[0].Copy()
+	fmt.Printf("0 > %v\n", pk.Hex())
 
 	switch {
 	// If id == 1 we can spare exponentiation and multiplications
 	case id == 1:
-		for _, com := range commitment[1:] {
+		for i, com := range commitment[1:] {
 			if com == nil {
 				return nil, errCommitmentNilElement
 			}
 
 			pk.Add(com)
+			fmt.Printf(".%d > %v\n", i, pk.Hex())
 		}
 	case len(commitment) >= 2:
 		return comPubKey(g, id, pk, commitment)
@@ -79,8 +82,10 @@ func comPubKey(g ecc.Group, id uint16, pk *ecc.Element, commitment []*ecc.Elemen
 	}
 
 	// if there are elements left and since i == 1, we can spare one exponentiation
+	fmt.Println("..0 > " + pk.Hex())
 	s := g.NewScalar().SetUInt64(uint64(id))
 	pk.Add(commitment[1].Copy().Multiply(s))
+	fmt.Println("..1 > " + pk.Hex())
 
 	i := uint64(1)
 	is := g.NewScalar()
@@ -93,6 +98,7 @@ func comPubKey(g ecc.Group, id uint16, pk *ecc.Element, commitment []*ecc.Elemen
 		i++
 		is.SetUInt64(i)
 		pk.Add(com.Copy().Multiply(s.Copy().Pow(is)))
+		fmt.Printf("..%d > %v\n", i, pk.Hex())
 	}
 
 	return pk, nil

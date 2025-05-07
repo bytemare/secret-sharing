@@ -242,7 +242,7 @@ func TestCommitment(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			for i, keyshare := range shares {
+			for _, keyshare := range shares {
 				pk := g.Base().Multiply(keyshare.Secret)
 
 				pubkey := keyshare.Public()
@@ -250,22 +250,17 @@ func TestCommitment(t *testing.T) {
 					t.Fatal("expected equality")
 				}
 
-				v, err := secretsharing.PubKeyForCommitment(pubkey.Group, pubkey.ID, pubkey.VssCommitment)
+				_, err = secretsharing.PubKeyForCommitment(pubkey.Group, pubkey.ID, pubkey.VssCommitment)
 				if err != nil {
 					t.Fatal(err)
 				}
 
-				t.Log(len(pubkey.VssCommitment))
-				t.Log(v.Hex())
-				t.Log(pubkey.PublicKey.Hex())
-				t.Log(pk.Hex())
-
 				if !secretsharing.VerifyPublicKeyShare(pubkey) {
-					t.Fatalf("invalid public key for shareholder %d", i)
+					t.Fatalf("invalid public key for shareholder %d", pubkey.ID)
 				}
 
 				if !secretsharing.Verify(g, pubkey.ID, pk, pubkey.VssCommitment) {
-					t.Fatalf("invalid public key for shareholder %d", i)
+					t.Fatalf("invalid public key for shareholder %d", pubkey.ID)
 				}
 			}
 

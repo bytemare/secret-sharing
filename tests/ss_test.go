@@ -1368,7 +1368,7 @@ func TestRegistry_VerifyPublicKey(t *testing.T) {
 				t.Fatalf("expecter error %q, got %q", expected, err)
 			}
 
-			expected = fmt.Errorf("%w: %q", errVerifyUnknownID, 0)
+			expected = fmt.Errorf("%w: %d", errVerifyUnknownID, 0)
 			if err := registry.VerifyPublicKey(0, g.NewElement()); err == nil || err.Error() != expected.Error() {
 				t.Fatalf("expecter error %q, got %q", expected, err)
 			}

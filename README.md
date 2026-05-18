@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 [![codecov](https://codecov.io/gh/bytemare/secret-sharing/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/bytemare/secret-sharing)
 
-```
+```go
   import "github.com/bytemare/secret-sharing"
 ```
 
@@ -19,6 +19,28 @@ you need a truly decentralized key generation, you can use the [dkg package](htt
 ## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/bytemare/secret-sharing.svg)](https://pkg.go.dev/github.com/bytemare/secret-sharing)
 
 You can find the documentation and usage examples in [the package doc](https://pkg.go.dev/github.com/bytemare/secret-sharing).
+
+## Decoding
+
+Encoded values are self-describing: the top-level `group` field is used to initialize zero-value receivers before nested
+scalars and elements are decoded.
+
+```go
+var decoded keys.KeyShare
+if err := json.Unmarshal(data, &decoded); err != nil {
+    return err
+}
+```
+
+If the group is already fixed by protocol or configuration, use a pinned receiver to reject payloads for any other
+group:
+
+```go
+decoded := keys.NewKeyShare(g) // or NewPublicKeyShare or NewEmptyPublicKeyShareRegistry
+if err := json.Unmarshal(data, decoded); err != nil {
+    return err
+}
+```
 
 ## Versioning
 
@@ -36,10 +58,6 @@ chmod +x verify-release.sh
 ./verify-release.sh --repo <owner>/<repo> --tag <tag> --mode full --signer-repo bytemare/slsa
 ```
 Run again with `--mode reproduce` to build in a container, or `--mode vsa` to validate just the verification summary.
-
-## Contributing
-
-Please read [CONTRIBUTING.md](.github/CONTRIBUTING.md) for details on the code of conduct, and the process for submitting pull requests.
 
 ## License
 

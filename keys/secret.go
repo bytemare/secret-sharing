@@ -12,6 +12,7 @@ package keys
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -23,6 +24,19 @@ type KeyShare struct {
 	Secret          *ecc.Scalar  `json:"secret"`
 	VerificationKey *ecc.Element `json:"verificationKey"`
 	PublicKeyShare
+}
+
+// NewKeyShare returns a KeyShare receiver pinned to g for JSON decoding.
+// When passed to json.Unmarshal, the encoded top-level group and every encoded scalar or element must belong to g.
+// Use a zero-value receiver instead when the group should be inferred from self-describing JSON.
+func NewKeyShare(g ecc.Group) *KeyShare {
+	k := &KeyShare{PublicKeyShare: *NewPublicKeyShare(g)}
+	if g.Available() {
+		k.Secret = g.NewScalar()
+		k.VerificationKey = g.NewElement()
+	}
+
+	return k
 }
 
 // Group returns the elliptic curve group used for this key share.
@@ -105,13 +119,40 @@ func (k *KeyShare) DecodeHex(h string) error {
 }
 
 // UnmarshalJSON decodes data into k, or returns an error.
+// If k.Group() is zero, the group is inferred from the encoded top-level group.
+// If k.Group() is non-zero, it must identify an available group and match the encoded top-level group.
+// Every encoded scalar or element group must match the resolved group.
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
-	ks := new(keyShareShadow)
-	if err := unmarshalJSON(data, ks); err != nil {
+	pk, err := decodePublicKeyShareJSON(k.Group(), data)
+	if err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err))
+	}
+	g := pk.Group
+
+	var wire keyShareJSON
+	if err = json.Unmarshal(data, &wire); err != nil {
 		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
 
-	k.populate(ks.Secret, ks.VerificationKey, (*PublicKeyShare)(ks.publicKeyShareShadow))
+	if err = requireJSONField(wire.Secret); err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
+	}
+
+	if err = requireJSONField(wire.VerificationKey); err != nil {
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
+	}
+
+	s := g.NewScalar()
+	if err = json.Unmarshal(wire.Secret, s); err != nil {
+		return fmt.Errorf("%w: failed to decode secret key: %w", errKeyShareDecodePrefix, err)
+	}
+
+	e := g.NewElement()
+	if err = json.Unmarshal(wire.VerificationKey, e); err != nil {
+		return fmt.Errorf("%w: failed to decode VerificationKey: %w", errKeyShareDecodePrefix, err)
+	}
+
+	k.populate(s, e, pk)
 
 	return nil
 }

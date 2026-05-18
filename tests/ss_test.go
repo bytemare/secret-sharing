@@ -171,7 +171,8 @@ func TestShardings(t *testing.T) {
 				secret,
 				threshold,
 				maxParticipants,
-				polynomial...)
+				polynomial...,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +202,8 @@ func TestShardings(t *testing.T) {
 				secret,
 				threshold,
 				maxParticipants,
-				polynomial...)
+				polynomial...,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -269,8 +271,8 @@ func TestCommitment(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			k := keys.KeyShare{}
-			if err := json.Unmarshal(b, &k); err != nil {
+			k := keys.NewKeyShare(g)
+			if err := json.Unmarshal(b, k); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -949,7 +951,7 @@ func TestEncoding_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			decodedPKS := &keys.PublicKeyShare{}
+			decodedPKS := new(keys.PublicKeyShare)
 			if err = json.Unmarshal(j, decodedPKS); err != nil {
 				t.Fatal(err)
 			}
@@ -964,7 +966,7 @@ func TestEncoding_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			decodedKS := &keys.KeyShare{}
+			decodedKS := new(keys.KeyShare)
 			if err = json.Unmarshal(j, decodedKS); err != nil {
 				t.Fatal(err)
 			}
@@ -1086,7 +1088,6 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 
 	errEncodingInvalidLength := "failed to decode PublicKeyShare: invalid encoding length"
 	errEncodingInvalidGroup := "failed to decode PublicKeyShare: invalid group identifier"
-	errEncodingInvalidJSONEncoding := "failed to decode PublicKeyShare: invalid JSON encoding"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1135,39 +1136,25 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// JSON
-			badKey := getBadElement(t, g)
-			badKeyHex := hex.EncodeToString(badKey)
-
-			if err = jsonTester("failed to decode PublicKeyShare", errEncodingInvalidJSONEncoding, shares[0], new(keys.PublicKeyShare),
-				jsonTesterBaddie{
-					"\"publicKey\"",
-					fmt.Sprintf("\"publicKey\":\"%s\",\"other\"", badKeyHex),
-					"failed to decode PublicKeyShare: element DecodeHex: ",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"vssCommitment\":[],\"other\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-			); err != nil {
+			// JSON: bad public key.
+			data, err := json.Marshal(shares[0].Public())
+			if err != nil {
 				t.Fatal(err)
 			}
+
+			var document map[string]any
+			if err = json.Unmarshal(data, &document); err != nil {
+				t.Fatal(err)
+			}
+
+			document["publicKey"] = hex.EncodeToString(getBadElement(t, g))
+			data, err = json.Marshal(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			expectedErrorPrefix = "failed to decode PublicKeyShare: failed to decode public key"
+			testUnmarshalJSONErrorPrefix(t, keys.NewPublicKeyShare(g), data, expectedErrorPrefix)
 
 			// UnmarshallJSON: excessive commitment length
 			shares[0].VssCommitment = make([]*ecc.Element, 65536)
@@ -1175,13 +1162,13 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 				shares[0].VssCommitment[i] = g.NewElement()
 			}
 
-			data, err := json.Marshal(shares[0])
+			data, err = json.Marshal(shares[0].Public())
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			errInvalidPolynomialLength := "failed to decode PublicKeyShare: invalid polynomial length (exceeds uint16 limit 65535)"
-			testUnmarshalJSONError(t, new(keys.PublicKeyShare), data, errInvalidPolynomialLength)
+			testUnmarshalJSONError(t, keys.NewPublicKeyShare(g), data, errInvalidPolynomialLength)
 		})
 	}
 }
@@ -1192,7 +1179,6 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 
 	errEncodingInvalidLength := "failed to decode KeyShare: invalid encoding length"
 	errEncodingInvalidGroup := "failed to decode KeyShare: invalid group identifier"
-	errEncodingInvalidJSONEncoding := "failed to decode KeyShare: invalid JSON encoding"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1229,14 +1215,14 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
-			expectedErrorPrefix := "failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key: element Decode: "
+			expectedErrorPrefix := "failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
 			// Decode: Bad scalar
 			offset += g.ElementLength() + len(shares[0].VssCommitment)*g.ElementLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ScalarLength(), badScalar...)
-			expectedErrorPrefix = "failed to decode KeyShare: failed to decode secret key: scalar Decode: "
+			expectedErrorPrefix = "failed to decode KeyShare: failed to decode secret key"
 
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
@@ -1244,7 +1230,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			offset += g.ScalarLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = "failed to decode KeyShare: failed to decode VerificationKey: element Decode: "
+			expectedErrorPrefix = "failed to decode KeyShare: failed to decode VerificationKey"
 
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
@@ -1252,27 +1238,9 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			expectedError := "failed to decode KeyShare:"
 			testDecodeHexFails(t, shares[0], decoded, expectedError)
 
-			// UnmarshallJSON: bad json
-			baddie := jsonTesterBaddie{
-				key:           "\"group\"",
-				value:         "bad",
-				expectedError: "invalid character 'b' looking for beginning of object key string",
-			}
-
-			if err = testJSONBaddie(shares[0], decoded, baddie); err != nil {
-				t.Fatal(err)
-			}
-
-			// UnmarshallJSON: bad group encoding
-			baddie = jsonTesterBaddie{
-				key:           "\"group\"",
-				value:         "\"group\":-1, \"oldGroup\"",
-				expectedError: errEncodingInvalidJSONEncoding,
-			}
-
-			if err = testJSONBaddie(shares[0], decoded, baddie); err != nil {
-				t.Fatal(err)
-			}
+			// JSON: malformed JSON is rejected after the receiver has a group.
+			expectedErrorPrefix = "unexpected end of JSON input"
+			testUnmarshalJSONErrorPrefix(t, keys.NewKeyShare(g), []byte(`{"group":`), expectedErrorPrefix)
 		})
 	}
 }
@@ -1446,7 +1414,7 @@ func TestRegistry_Encoding(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r2 = new(keys.PublicKeyShareRegistry)
+			r2 = keys.NewEmptyPublicKeyShareRegistry(g)
 			if err := json.Unmarshal(j, r2); err != nil {
 				t.Fatal(err)
 			}
@@ -1503,7 +1471,7 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			e = registry.Encode()
 			e = slices.Replace(e, 5, 5+g.ElementLength(), badElement...)
 			expectedErrorPrefix := errors.New(
-				"failed to decode PublicKeyShareRegistry: invalid group public key encoding: element Decode: ",
+				"failed to decode PublicKeyShareRegistry: invalid group public key encoding",
 			)
 			if err = decoded.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
@@ -1540,11 +1508,14 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			expectedError := "failed to decode PublicKeyShareRegistry:"
 			testDecodeHexFails(t, registry, decoded, expectedError)
 
-			// JSON: bad json
-			errInvalidJSON := "failed to decode PublicKeyShareRegistry: failed to decode PublicKeyShare: invalid JSON encoding"
-			if err = jsonTester("failed to decode PublicKeyShareRegistry", errInvalidJSON, registry, decoded); err != nil {
-				t.Fatal(err)
-			}
+			// JSON: malformed JSON is rejected after the receiver has a group.
+			expectedErrorPrefix = errors.New("unexpected end of JSON input")
+			testUnmarshalJSONErrorPrefix(
+				t,
+				keys.NewEmptyPublicKeyShareRegistry(g),
+				[]byte(`{"group":`),
+				expectedErrorPrefix.Error(),
+			)
 		})
 	}
 }
@@ -1566,7 +1537,7 @@ func TestRegistry_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r2 := new(keys.PublicKeyShareRegistry)
+			r2 := keys.NewEmptyPublicKeyShareRegistry(g)
 			if err := json.Unmarshal(j, r2); err != nil {
 				t.Fatal(err)
 			}

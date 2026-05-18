@@ -11,13 +11,15 @@ package keys
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/bytemare/ecc"
 )
 
-// PublicKeyShare specifies the public key of a participant identified with ID. This can be useful to keep a registry of
-// participants.
+// PublicKeyShare specifies the public key of a participant identified with ID.
+// This can be used in a registry of participants.
 type PublicKeyShare struct {
 	// The PublicKey of Secret belonging to the participant.
 	PublicKey *ecc.Element `json:"publicKey"`
@@ -28,8 +30,20 @@ type PublicKeyShare struct {
 	// ID of the participant.
 	ID uint16 `json:"id"`
 
-	// Group specifies the elliptic curve group the elements are part of.
+	// Group specifies the elliptic curve group the public key and commitments are part of.
 	Group ecc.Group `json:"group"`
+}
+
+// NewPublicKeyShare returns a PublicKeyShare receiver pinned to g for JSON decoding.
+// When passed to json.Unmarshal, the encoded top-level group and every encoded element must belong to g.
+// Use a zero-value receiver instead when the group should be inferred from self-describing JSON.
+func NewPublicKeyShare(g ecc.Group) *PublicKeyShare {
+	p := &PublicKeyShare{Group: g}
+	if g.Available() {
+		p.PublicKey = g.NewElement()
+	}
+
+	return p
 }
 
 func publicKeyShareLength(g ecc.Group, polyLen int) int {
@@ -82,15 +96,60 @@ func (p *PublicKeyShare) DecodeHex(h string) error {
 }
 
 // UnmarshalJSON decodes data into p, or returns an error.
+// If p.Group is zero, the group is inferred from the encoded top-level group.
+// If p.Group is non-zero, it must identify an available group and match the encoded top-level group.
+// Every encoded element group must match the resolved group.
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
-	ps := new(publicKeyShareShadow)
-	if err := unmarshalJSON(data, ps); err != nil {
+	decoded, err := decodePublicKeyShareJSON(p.Group, data)
+	if err != nil {
 		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
-	*p = PublicKeyShare(*ps)
+	*p = *decoded
 
 	return nil
+}
+
+func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare, error) {
+	var wire publicKeyShareJSON
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, err
+	}
+
+	g, err := resolveJSONGroup(receiver, wire.Group)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := requireJSONField(wire.PublicKey); err != nil {
+		return nil, err
+	}
+
+	if len(wire.VssCommitment) > math.MaxUint16 {
+		return nil, errInvalidPolynomialLength
+	}
+
+	pk := g.NewElement()
+	if err := json.Unmarshal(wire.PublicKey, pk); err != nil {
+		return nil, fmt.Errorf("failed to decode public key: %w", err)
+	}
+
+	commitment := make([]*ecc.Element, len(wire.VssCommitment))
+	for i, raw := range wire.VssCommitment {
+		c := g.NewElement()
+		if err := json.Unmarshal(raw, c); err != nil {
+			return nil, fmt.Errorf("failed to decode commitment %d: %w", i+1, err)
+		}
+
+		commitment[i] = c
+	}
+
+	return &PublicKeyShare{
+		PublicKey:     pk,
+		VssCommitment: commitment,
+		ID:            wire.ID,
+		Group:         g,
+	}, nil
 }
 
 func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {

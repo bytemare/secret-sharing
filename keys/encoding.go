@@ -12,10 +12,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"regexp"
-	"strconv"
-	"strings"
 
 	"github.com/bytemare/ecc"
 )
@@ -24,6 +20,7 @@ var (
 	errEncodingInvalidGroup           = errors.New("invalid group identifier")
 	errEncodingInvalidLength          = errors.New("invalid encoding length")
 	errEncodingInvalidJSONEncoding    = errors.New("invalid JSON encoding")
+	errEncodingGroupMismatch          = errors.New("encoded group does not match receiver group")
 	errInvalidPolynomialLength        = errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
 	errPublicKeyShareDecodePrefix     = errors.New("failed to decode PublicKeyShare")
 	errKeyShareDecodePrefix           = errors.New("failed to decode KeyShare")
@@ -41,126 +38,52 @@ const errFmt = "%w: %w"
 
 // helper functions
 
-type shadowInit interface {
-	init(g ecc.Group, threshold uint16)
+type publicKeyShareJSON struct {
+	PublicKey     json.RawMessage   `json:"publicKey"`
+	VssCommitment []json.RawMessage `json:"vssCommitment,omitempty"`
+	ID            uint16            `json:"id"`
+	Group         ecc.Group         `json:"group"`
 }
 
-type publicKeyShareShadow PublicKeyShare
-
-func (p *publicKeyShareShadow) init(g ecc.Group, threshold uint16) {
-	p.ID = 0
-	p.Group = g
-	p.PublicKey = g.NewElement()
-	p.VssCommitment = make([]*ecc.Element, threshold)
-
-	for i := range threshold {
-		p.VssCommitment[i] = g.NewElement()
-	}
+type keyShareJSON struct {
+	Secret          json.RawMessage `json:"secret"`
+	VerificationKey json.RawMessage `json:"verificationKey"`
 }
 
-type keyShareShadow struct {
-	Secret          *ecc.Scalar  `json:"secret"`
-	VerificationKey *ecc.Element `json:"verificationKey"`
-	*publicKeyShareShadow
+type registryJSON struct {
+	PublicKeyShares map[uint16]json.RawMessage `json:"publicKeyShares"`
+	VerificationKey json.RawMessage            `json:"verificationKey"`
+	Total           uint16                     `json:"total"`
+	Threshold       uint16                     `json:"threshold"`
+	Group           ecc.Group                  `json:"group"`
 }
 
-func (k *keyShareShadow) init(g ecc.Group, threshold uint16) {
-	p := new(publicKeyShareShadow)
-	p.init(g, threshold)
-	k.Secret = g.NewScalar()
-	k.VerificationKey = g.NewElement()
-	k.publicKeyShareShadow = p
-}
-
-type registryShadow PublicKeyShareRegistry
-
-func (r *registryShadow) init(g ecc.Group, _ uint16) {
-	r.VerificationKey = g.NewElement()
-}
-
-func unmarshalJSONHeader(data []byte) (ecc.Group, uint16, error) {
-	s := string(data)
-
-	g, err := jsonReGetGroup(s)
-	if err != nil {
-		return 0, 0, err
+func resolveJSONGroup(receiver, encoded ecc.Group) (ecc.Group, error) {
+	if !encoded.Available() {
+		return 0, errEncodingInvalidGroup
 	}
 
-	nPoly := jsonRePolyLen(s)
-	if nPoly > 65535 {
-		return 0, 0, errInvalidPolynomialLength
+	if receiver == 0 {
+		return encoded, nil
 	}
 
-	return g, uint16(nPoly), nil
+	if !receiver.Available() {
+		return 0, errEncodingInvalidGroup
+	}
+
+	if encoded != receiver {
+		return 0, errEncodingGroupMismatch
+	}
+
+	return receiver, nil
 }
 
-func unmarshalJSON(data []byte, target shadowInit) error {
-	g, nPoly, err := unmarshalJSONHeader(data)
-	if err != nil {
-		return err
-	}
-
-	target.init(g, nPoly)
-
-	if err = json.Unmarshal(data, target); err != nil {
-		return fmt.Errorf("%w", err)
+func requireJSONField(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return errEncodingInvalidJSONEncoding
 	}
 
 	return nil
-}
-
-func jsonReGetField(key, s, catch string) (string, error) {
-	r := fmt.Sprintf(`%q:%s`, key, catch)
-	re := regexp.MustCompile(r)
-	matches := re.FindStringSubmatch(s)
-
-	if len(matches) != 2 {
-		return "", errEncodingInvalidJSONEncoding
-	}
-
-	return matches[1], nil
-}
-
-// jsonReGetGroup attempts to find the Group JSON encoding in s.
-func jsonReGetGroup(s string) (ecc.Group, error) {
-	f, err := jsonReGetField("group", s, `(\w+)`)
-	if err != nil {
-		return 0, err
-	}
-
-	i, err := strconv.Atoi(f)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read Group: %w", err)
-	}
-
-	if i < 0 || i > 63 {
-		return 0, errEncodingInvalidGroup
-	}
-
-	g := ecc.Group(i)
-	if !g.Available() {
-		return 0, errEncodingInvalidGroup
-	}
-
-	return g, nil
-}
-
-// jsonRePolyLen attempts to find the number of elements encoded in the commitment.
-func jsonRePolyLen(s string) int {
-	re := regexp.MustCompile(`vssCommitment":\[\s*(.*?)\s*]`)
-
-	matches := re.FindStringSubmatch(s)
-	if len(matches) == 0 {
-		return 0
-	}
-
-	if matches[1] == "" {
-		return 0
-	}
-
-	n := strings.Count(matches[1], ",")
-
-	return n + 1
 }
 
 func decodeKeyShareHeader(data []byte) (g ecc.Group, pksLen, comLen int, err error) {

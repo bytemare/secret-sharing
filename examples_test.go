@@ -9,6 +9,7 @@
 package secretsharing_test
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/bytemare/ecc"
@@ -87,4 +88,44 @@ func ExampleVerify() {
 	fmt.Println("All key shares verified.")
 
 	// Output: All key shares verified.
+}
+
+func Example_jsonDecoding() {
+	g := ecc.Ristretto255Sha512
+	shares, err := secretsharing.ShardAndCommit(g, g.NewScalar().Random(), 2, 3)
+	if err != nil {
+		panic(err)
+	}
+
+	keyShareJSON, err := json.Marshal(shares[0])
+	if err != nil {
+		panic(err)
+	}
+
+	var decodedKeyShare keys.KeyShare
+	if err = json.Unmarshal(keyShareJSON, &decodedKeyShare); err != nil {
+		panic(err)
+	}
+
+	registry := keys.NewPublicKeyShareRegistry(g, 2, 3)
+	for _, share := range shares {
+		if err = registry.Add(share.Public()); err != nil {
+			panic(err)
+		}
+	}
+	registry.VerificationKey = shares[0].VerificationKey
+
+	registryJSON, err := json.Marshal(registry)
+	if err != nil {
+		panic(err)
+	}
+
+	var decodedRegistry keys.PublicKeyShareRegistry
+	if err = json.Unmarshal(registryJSON, &decodedRegistry); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(decodedKeyShare.ID == shares[0].ID && decodedRegistry.Get(decodedKeyShare.ID) != nil)
+
+	// Output: true
 }

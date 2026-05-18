@@ -11,6 +11,7 @@ package keys
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	"github.com/bytemare/ecc"
@@ -24,6 +25,21 @@ type PublicKeyShareRegistry struct {
 	Total           uint16                     `json:"total"`
 	Threshold       uint16                     `json:"threshold"`
 	Group           ecc.Group                  `json:"group"`
+}
+
+// NewEmptyPublicKeyShareRegistry returns an empty PublicKeyShareRegistry receiver pinned to g for JSON decoding.
+// When passed to json.Unmarshal, the encoded top-level group and every encoded public key share and verification key
+// must belong to g. Use a zero-value receiver instead when the group should be inferred from self-describing JSON.
+func NewEmptyPublicKeyShareRegistry(g ecc.Group) *PublicKeyShareRegistry {
+	r := &PublicKeyShareRegistry{
+		PublicKeyShares: make(map[uint16]*PublicKeyShare),
+		Group:           g,
+	}
+	if g.Available() {
+		r.VerificationKey = g.NewElement()
+	}
+
+	return r
 }
 
 // NewPublicKeyShareRegistry returns a populated PublicKeyShareRegistry.
@@ -84,7 +100,7 @@ func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *ecc.Element)
 		}
 	}
 
-	return fmt.Errorf("%w: %q", errVerifyUnknownID, id)
+	return fmt.Errorf("%w: %d", errVerifyUnknownID, id)
 }
 
 func registryByteSize(g ecc.Group, threshold, total uint16) (size, pksLen int) {
@@ -179,14 +195,84 @@ func (k *PublicKeyShareRegistry) DecodeHex(h string) error {
 }
 
 // UnmarshalJSON reads the input data as JSON and deserializes it into the receiver. It doesn't modify the receiver when
-// encountering an error.
+// encountering an error. If k.Group is zero, the group is inferred from the encoded top-level group. If k.Group is
+// non-zero, it must identify an available group and match the encoded top-level group. Every encoded element group must
+// match the resolved group.
 func (k *PublicKeyShareRegistry) UnmarshalJSON(data []byte) error {
-	r := new(registryShadow)
-	if err := unmarshalJSON(data, r); err != nil {
+	decoded, err := decodeRegistryJSON(k.Group, data)
+	if err != nil {
 		return fmt.Errorf(errFmt, errRegistryDecodePrefix, err)
 	}
 
-	*k = PublicKeyShareRegistry(*r)
+	*k = *decoded
 
 	return nil
+}
+
+func decodeRegistryJSON(receiver ecc.Group, data []byte) (*PublicKeyShareRegistry, error) {
+	var wire registryJSON
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, err
+	}
+
+	g, err := resolveJSONGroup(receiver, wire.Group)
+	if err != nil {
+		return nil, err
+	}
+
+	if wire.Total == 0 || wire.Threshold == 0 || wire.Threshold > wire.Total {
+		return nil, fmt.Errorf("%w: invalid total or threshold", errEncodingInvalidJSONEncoding)
+	}
+
+	if len(wire.PublicKeyShares) != int(wire.Total) {
+		return nil, fmt.Errorf("%w: public key share count does not match total", errEncodingInvalidJSONEncoding)
+	}
+
+	if err := requireJSONField(wire.VerificationKey); err != nil {
+		return nil, err
+	}
+
+	gpk := g.NewElement()
+	if err := json.Unmarshal(wire.VerificationKey, gpk); err != nil {
+		return nil, fmt.Errorf("invalid group public key encoding: %w", err)
+	}
+
+	pks := make(map[uint16]*PublicKeyShare, wire.Total)
+	for id, raw := range wire.PublicKeyShares {
+		pk := NewPublicKeyShare(g)
+		if err := json.Unmarshal(raw, pk); err != nil {
+			return nil, fmt.Errorf("could not decode public key share %d: %w", id, err)
+		}
+
+		if pk.ID != id {
+			return nil, fmt.Errorf(
+				"%w: public key share map key %d does not match share ID %d",
+				errEncodingInvalidJSONEncoding,
+				id,
+				pk.ID,
+			)
+		}
+
+		if len(pk.VssCommitment) != int(wire.Threshold) {
+			return nil, fmt.Errorf(
+				"%w: public key share %d commitment length does not match threshold",
+				errEncodingInvalidJSONEncoding,
+				id,
+			)
+		}
+
+		if _, ok := pks[pk.ID]; ok {
+			return nil, errEncodingPKSDuplication
+		}
+
+		pks[pk.ID] = pk
+	}
+
+	return &PublicKeyShareRegistry{
+		VerificationKey: gpk,
+		PublicKeyShares: pks,
+		Total:           wire.Total,
+		Threshold:       wire.Threshold,
+		Group:           g,
+	}, nil
 }

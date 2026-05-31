@@ -125,8 +125,9 @@ func (k *KeyShare) DecodeHex(h string) error {
 func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	pk, err := decodePublicKeyShareJSON(k.Group(), data)
 	if err != nil {
-		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err))
+		return fmt.Errorf(errFmt, errKeyShareDecodePrefix, err)
 	}
+
 	g := pk.Group
 
 	var wire keyShareJSON

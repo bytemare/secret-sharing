@@ -104,16 +104,15 @@ func (k *PublicKeyShareRegistry) VerifyPublicKey(id uint16, pubKey *ecc.Element)
 }
 
 func registryByteSize(g ecc.Group, threshold, total uint16) (size, pksLen int) {
-	eLen := g.ElementLength()
-	pksLen = 1 + 2 + 4 + eLen + int(threshold)*eLen
+	pksLen = publicKeyShareLength(g, int(threshold))
 
-	return 1 + 2 + 2 + g.ElementLength() + int(total)*pksLen, pksLen
+	return sharedHeaderLength + g.ElementLength() + int(total)*pksLen, pksLen
 }
 
 // Encode serializes the registry into a compact byte encoding of the registry, suitable for storage or transmissions.
 func (k *PublicKeyShareRegistry) Encode() []byte {
 	size, _ := registryByteSize(k.Group, k.Threshold, k.Total)
-	out := make([]byte, 5, size)
+	out := make([]byte, sharedHeaderLength, size)
 	out[0] = byte(k.Group)
 	binary.LittleEndian.PutUint16(out[1:3], k.Total)
 	binary.LittleEndian.PutUint16(out[3:5], k.Threshold)
@@ -212,57 +211,53 @@ func (k *PublicKeyShareRegistry) UnmarshalJSON(data []byte) error {
 func decodeRegistryJSON(receiver ecc.Group, data []byte) (*PublicKeyShareRegistry, error) {
 	var wire registryJSON
 	if err := json.Unmarshal(data, &wire); err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errFmt, errRegistryDecodePrefix, err)
 	}
 
 	g, err := resolveDecodedGroup(receiver, wire.Group)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errFmt, errRegistryDecodePrefix, err)
 	}
 
 	if wire.Total == 0 || wire.Threshold == 0 || wire.Threshold > wire.Total {
-		return nil, fmt.Errorf("%w: invalid total or threshold", errEncodingInvalidJSONEncoding)
+		return nil, fmt.Errorf("%w: %w: invalid total or threshold", errRegistryDecodePrefix, errEncodingInvalidJSONEncoding)
 	}
 
 	if len(wire.PublicKeyShares) != int(wire.Total) {
-		return nil, fmt.Errorf("%w: public key share count does not match total", errEncodingInvalidJSONEncoding)
+		return nil, fmt.Errorf(
+			"%w, %w: public key share count does not match total", errRegistryDecodePrefix, errEncodingInvalidJSONEncoding)
 	}
 
-	if err := requireJSONField(wire.VerificationKey); err != nil {
-		return nil, err
+	if err = requireJSONField(wire.VerificationKey); err != nil {
+		return nil, fmt.Errorf(errFmt, errRegistryDecodePrefix, err)
 	}
 
 	gpk := g.NewElement()
-	if err := json.Unmarshal(wire.VerificationKey, gpk); err != nil {
-		return nil, fmt.Errorf("invalid group public key encoding: %w", err)
+	if err = json.Unmarshal(wire.VerificationKey, gpk); err != nil {
+		return nil, fmt.Errorf("%w: invalid group public key encoding: %w", errRegistryDecodePrefix, err)
 	}
 
 	pks := make(map[uint16]*PublicKeyShare, wire.Total)
 	for id, raw := range wire.PublicKeyShares {
 		pk := NewPublicKeyShare(g)
-		if err := json.Unmarshal(raw, pk); err != nil {
-			return nil, fmt.Errorf("could not decode public key share %d: %w", id, err)
+		if err = json.Unmarshal(raw, pk); err != nil {
+			return nil, fmt.Errorf("%w: could not decode public key share %d: %w", errRegistryDecodePrefix, id, err)
 		}
 
 		if pk.ID != id {
-			return nil, fmt.Errorf(
-				"%w: public key share map key %d does not match share ID %d",
-				errEncodingInvalidJSONEncoding,
-				id,
-				pk.ID,
+			return nil, fmt.Errorf("%w: %w: public key share map key %d does not match share ID %d",
+				errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id, pk.ID,
 			)
 		}
 
 		if len(pk.VssCommitment) != int(wire.Threshold) {
-			return nil, fmt.Errorf(
-				"%w: public key share %d commitment length does not match threshold",
-				errEncodingInvalidJSONEncoding,
-				id,
+			return nil, fmt.Errorf("%w: %w: public key share %d commitment length does not match threshold",
+				errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id,
 			)
 		}
 
 		if _, ok := pks[pk.ID]; ok {
-			return nil, errEncodingPKSDuplication
+			return nil, fmt.Errorf(errFmt, errRegistryDecodePrefix, errEncodingPKSDuplication)
 		}
 
 		pks[pk.ID] = pk

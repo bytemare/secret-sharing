@@ -96,11 +96,11 @@ func decodeKeyShareHeader(data []byte) (g ecc.Group, pksLen, comLen int, err err
 		return 0, 0, 0, errEncodingInvalidGroup
 	}
 
-	if len(data) <= 5 {
+	if len(data) <= sharedHeaderLength {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	comLen = int(binary.LittleEndian.Uint16(data[3:5]))
+	comLen = int(binary.LittleEndian.Uint16(data[3:sharedHeaderLength]))
 	pksLen = publicKeyShareLength(g, comLen)
 
 	return g, pksLen, comLen, nil

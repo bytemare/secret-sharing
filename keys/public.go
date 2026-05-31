@@ -18,6 +18,8 @@ import (
 	"github.com/bytemare/ecc"
 )
 
+const sharedHeaderLength = 5
+
 // PublicKeyShare specifies the public key of a participant identified with ID.
 // This can be used in a registry of participants.
 type PublicKeyShare struct {
@@ -48,12 +50,12 @@ func NewPublicKeyShare(g ecc.Group) *PublicKeyShare {
 
 func publicKeyShareLength(g ecc.Group, polyLen int) int {
 	eLen := g.ElementLength()
-	return 1 + 2 + 2 + eLen + polyLen*eLen
+	return sharedHeaderLength + eLen + polyLen*eLen
 }
 
 // Encode serializes p into a compact byte string.
 func (p *PublicKeyShare) Encode() []byte {
-	out := make([]byte, 5, publicKeyShareLength(p.Group, len(p.VssCommitment)))
+	out := make([]byte, sharedHeaderLength, publicKeyShareLength(p.Group, len(p.VssCommitment)))
 	out[0] = byte(p.Group)
 	binary.LittleEndian.PutUint16(out[1:3], p.ID)
 	binary.LittleEndian.PutUint16(out[3:5], uint16(len(p.VssCommitment)))
@@ -102,7 +104,7 @@ func (p *PublicKeyShare) DecodeHex(h string) error {
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 	decoded, err := decodePublicKeyShareJSON(p.Group, data)
 	if err != nil {
-		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
+		return err
 	}
 
 	*p = *decoded
@@ -113,7 +115,7 @@ func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
 func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare, error) {
 	var wire publicKeyShareJSON
 	if err := json.Unmarshal(data, &wire); err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
 	g, err := resolveDecodedGroup(receiver, wire.Group)
@@ -121,7 +123,7 @@ func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare,
 		return nil, err
 	}
 
-	if err := requireJSONField(wire.PublicKey); err != nil {
+	if err = requireJSONField(wire.PublicKey); err != nil {
 		return nil, err
 	}
 
@@ -130,14 +132,14 @@ func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare,
 	}
 
 	pk := g.NewElement()
-	if err := json.Unmarshal(wire.PublicKey, pk); err != nil {
+	if err = json.Unmarshal(wire.PublicKey, pk); err != nil {
 		return nil, fmt.Errorf("failed to decode public key: %w", err)
 	}
 
 	commitment := make([]*ecc.Element, len(wire.VssCommitment))
 	for i, raw := range wire.VssCommitment {
 		c := g.NewElement()
-		if err := json.Unmarshal(raw, c); err != nil {
+		if err = json.Unmarshal(raw, c); err != nil {
 			return nil, fmt.Errorf("failed to decode commitment %d: %w", i+1, err)
 		}
 
@@ -162,16 +164,16 @@ func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
 	id := binary.LittleEndian.Uint16(data[1:3])
 
 	pk := g.NewElement()
-	if err := pk.Decode(data[5 : 5+eLen]); err != nil {
+	if err = pk.Decode(data[sharedHeaderLength : sharedHeaderLength+eLen]); err != nil {
 		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
 	}
 
 	i := 0
 	commitment := make([]*ecc.Element, cLen)
 
-	for j := 7 + eLen; j < len(data); j += eLen {
+	for j := sharedHeaderLength + eLen; j < len(data); j += eLen {
 		c := g.NewElement()
-		if err := c.Decode(data[j : j+eLen]); err != nil {
+		if err = c.Decode(data[j : j+eLen]); err != nil {
 			return fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
 		}
 

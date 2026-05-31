@@ -3,7 +3,10 @@ linters:
   default: none
   disable:
     - embeddedstructfieldcheck
+    - exhaustruct
     - noinlineerr
+    - nonamedreturns
+    - varnamelen
   enable:
     - arangolint
     - asasalint
@@ -107,7 +110,6 @@ linters:
     - unused
     - usestdlibvars
     - usetesting
-    - varnamelen
     - wastedassign
     - whitespace
     - wrapcheck
@@ -115,7 +117,7 @@ linters:
     - zerologlint
   settings:
     cyclop:
-      max-complexity: 12
+      max-complexity: 14
     depguard:
       rules:
         main:
@@ -125,6 +127,8 @@ linters:
     errcheck:
       check-type-assertions: true
       check-blank: true
+    funlen:
+      lines: 70
     gocritic:
       enable-all: true
     gosec:

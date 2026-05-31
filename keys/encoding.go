@@ -58,7 +58,7 @@ type registryJSON struct {
 	Group           ecc.Group                  `json:"group"`
 }
 
-func resolveJSONGroup(receiver, encoded ecc.Group) (ecc.Group, error) {
+func resolveDecodedGroup(receiver, encoded ecc.Group) (ecc.Group, error) {
 	if !encoded.Available() {
 		return 0, errEncodingInvalidGroup
 	}
@@ -96,11 +96,11 @@ func decodeKeyShareHeader(data []byte) (g ecc.Group, pksLen, comLen int, err err
 		return 0, 0, 0, errEncodingInvalidGroup
 	}
 
-	if len(data) <= 7 {
+	if len(data) <= 5 {
 		return 0, 0, 0, errEncodingInvalidLength
 	}
 
-	comLen = int(binary.LittleEndian.Uint32(data[3:7]))
+	comLen = int(binary.LittleEndian.Uint16(data[3:5]))
 	pksLen = publicKeyShareLength(g, comLen)
 
 	return g, pksLen, comLen, nil

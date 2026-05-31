@@ -215,7 +215,7 @@ func decodeRegistryJSON(receiver ecc.Group, data []byte) (*PublicKeyShareRegistr
 		return nil, err
 	}
 
-	g, err := resolveJSONGroup(receiver, wire.Group)
+	g, err := resolveDecodedGroup(receiver, wire.Group)
 	if err != nil {
 		return nil, err
 	}

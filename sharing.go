@@ -139,7 +139,7 @@ func ShardAndCommitAndReturnPolynomial(
 	return innerShard(g, secret, threshold, maximum, true, true, polynomial...)
 }
 
-// CombineShares recovers the sharded secret by combining the key shares that implement the Share interface. It recovers
+// CombineShares recovers the sharded secret by combining the key shares. It recovers
 // the constant term of the interpolating polynomial defined by the set of key shares.
 func CombineShares(shares []*keys.KeyShare) (*ecc.Scalar, error) {
 	if len(shares) == 0 {

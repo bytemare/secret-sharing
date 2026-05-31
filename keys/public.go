@@ -48,15 +48,15 @@ func NewPublicKeyShare(g ecc.Group) *PublicKeyShare {
 
 func publicKeyShareLength(g ecc.Group, polyLen int) int {
 	eLen := g.ElementLength()
-	return 1 + 2 + 4 + eLen + polyLen*eLen
+	return 1 + 2 + 2 + eLen + polyLen*eLen
 }
 
 // Encode serializes p into a compact byte string.
 func (p *PublicKeyShare) Encode() []byte {
-	out := make([]byte, 7, publicKeyShareLength(p.Group, len(p.VssCommitment)))
+	out := make([]byte, 5, publicKeyShareLength(p.Group, len(p.VssCommitment)))
 	out[0] = byte(p.Group)
 	binary.LittleEndian.PutUint16(out[1:3], p.ID)
-	binary.LittleEndian.PutUint32(out[3:7], uint32(len(p.VssCommitment)))
+	binary.LittleEndian.PutUint16(out[3:5], uint16(len(p.VssCommitment)))
 	out = append(out, p.PublicKey.Encode()...)
 
 	for _, c := range p.VssCommitment {
@@ -116,7 +116,7 @@ func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare,
 		return nil, err
 	}
 
-	g, err := resolveJSONGroup(receiver, wire.Group)
+	g, err := resolveDecodedGroup(receiver, wire.Group)
 	if err != nil {
 		return nil, err
 	}
@@ -153,11 +153,16 @@ func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare,
 }
 
 func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
+	g, err := resolveDecodedGroup(p.Group, g)
+	if err != nil {
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
+	}
+
 	eLen := g.ElementLength()
 	id := binary.LittleEndian.Uint16(data[1:3])
 
 	pk := g.NewElement()
-	if err := pk.Decode(data[7 : 7+eLen]); err != nil {
+	if err := pk.Decode(data[5 : 5+eLen]); err != nil {
 		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
 	}
 

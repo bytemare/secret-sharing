@@ -1119,13 +1119,13 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			testDecodeError(t, encoded[:19], decoded, errEncodingInvalidLength)
 
 			// Decode: Bad public key
-			encoded = slices.Replace(encoded, 7, 7+g.ElementLength(), badElement...)
+			encoded = slices.Replace(encoded, 5, 5+g.ElementLength(), badElement...)
 			expectedErrorPrefix := "failed to decode PublicKeyShare: failed to decode public key"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
 			// Decode: bad commitment
 			encoded = shares[0].Public().Encode()
-			offset := 7 + 2*g.ElementLength()
+			offset := 5 + 2*g.ElementLength()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 			expectedErrorPrefix = "failed to decode PublicKeyShare: failed to decode commitment 2"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
@@ -1211,7 +1211,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			testDecodeError(t, encoded[:25], decoded, errEncodingInvalidLength)
 
 			// Decode: Bad public key share
-			offset := 7
+			offset := 5
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 

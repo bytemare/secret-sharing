@@ -9,18 +9,9 @@
 package secretsharing
 
 import (
-	"errors"
-
 	"github.com/bytemare/ecc"
 
 	"github.com/bytemare/secret-sharing/keys"
-)
-
-var (
-	errCommitmentNilElement = errors.New("commitment has nil element")
-	errCommitmentWrongGroup = errors.New("commitment element has incompatible EC group")
-	errPolynomialEmpty      = errors.New("polynomial is empty")
-	errIdentifierIsZero     = errors.New("identifier is zero")
 )
 
 // VssCommitment is the tuple defining a Verifiable Secret Sharing VssCommitment to a secret Polynomial.

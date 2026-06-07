@@ -19,7 +19,9 @@ import (
 	"github.com/bytemare/ecc"
 )
 
-// KeyShare holds the secret and public key share for a given participant.
+// KeyShare holds the secret key share and public key share for a given participant.
+// Unlike PublicKeyShare and PublicKeyShareRegistry, KeyShare contains secret
+// key-share material and must be handled like private key material.
 type KeyShare struct {
 	secret          *ecc.Scalar
 	verificationKey *ecc.Element
@@ -147,7 +149,10 @@ func (k *KeyShare) Validate() error {
 	return validateKeyShare(k)
 }
 
-// Encode serializes k into a compact byte string.
+// Encode serializes k into a compact byte string containing secret key-share material.
+// Treat the returned bytes like private key material: do not log them, send them over public transport, include them in
+// telemetry, store them without authentication, or publish them accidentally.
+// Use PublicKeyShare or PublicKeyShareRegistry encodings for public-only metadata.
 func (k *KeyShare) Encode() []byte {
 	if err := k.Validate(); err != nil {
 		return nil
@@ -164,6 +169,8 @@ func (k *KeyShare) Encode() []byte {
 }
 
 // Hex returns the hexadecimal representation of the byte encoding returned by Encode().
+// The returned string contains secret key-share material. Treat it like private key material.
+// Use PublicKeyShare or PublicKeyShareRegistry encodings for public-only metadata.
 func (k *KeyShare) Hex() string {
 	return hex.EncodeToString(k.Encode())
 }
@@ -268,7 +275,11 @@ func (k *KeyShare) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON encodes k using the stable flattened public wire contract.
+// MarshalJSON encodes k using the stable flattened KeyShare wire contract.
+// The JSON contains secret key-share material in addition to public share metadata. Treat the output like private key
+// material: do not log it, send it over public transport, include it in telemetry, store it without authentication, or
+// publish it accidentally.
+// Use PublicKeyShare or PublicKeyShareRegistry JSON for public-only metadata.
 func (k *KeyShare) MarshalJSON() ([]byte, error) {
 	if err := k.Validate(); err != nil {
 		return nil, err

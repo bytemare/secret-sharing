@@ -73,6 +73,11 @@ func makeFuzzPolynomial(g ecc.Group, threshold uint16, secret uint64, coeffs []b
 			value += uint64(coeffs[(int(i)-1)%len(coeffs)])
 		}
 
+		if i < threshold-1 && value%5 == 0 {
+			polynomial[i] = g.NewScalar().Zero()
+			continue
+		}
+
 		polynomial[i] = fuzzNonZeroScalar(g, value)
 	}
 
@@ -504,6 +509,9 @@ func FuzzPolynomialOperations(f *testing.F) {
 			t.Fatalf("polynomial constructors disagree")
 		}
 		if err := fromInts.Verify(); err != nil {
+			t.Fatal(err)
+		}
+		if err := fromInts.VerifyInterpolationIDs(); err != nil {
 			t.Fatal(err)
 		}
 

@@ -19,8 +19,9 @@ import (
 	secretsharing "github.com/bytemare/secret-sharing"
 )
 
-// ExampleShard shows how to split a private key into shares and how to recombine it from a
-// subset of shares. For an example of Verifiable Secret Sharing, see ExampleVerify.
+// ExampleShard shows the recommended reconstruction path: split a private key with
+// commitments, build a validated public registry, and recombine a submitted subset
+// with registry-backed verification.
 func ExampleShard() {
 	// These are the configuration parameters
 	g := ecc.Ristretto255Sha512
@@ -30,8 +31,26 @@ func ExampleShard() {
 	// This is the global secret to be shared
 	secret := g.NewScalar().Random()
 
-	// Shard the secret into shares
-	shares, err := secretsharing.Shard(g, secret, threshold, shareholders)
+	// Shard the secret into shares and commit to the sharing polynomial.
+	shares, err := secretsharing.ShardAndCommit(g, secret, threshold, shareholders)
+	if err != nil {
+		panic(err)
+	}
+
+	// Build the public registry from the public part of every generated share.
+	// NewPublicKeyShareRegistry validates that the registry is complete and internally consistent.
+	publicShares := make([]*keys.PublicKeyShare, 0, len(shares))
+	for _, share := range shares {
+		publicShares = append(publicShares, share.PublicKeyShare())
+	}
+
+	registry, err := keys.NewPublicKeyShareRegistry(
+		g,
+		threshold,
+		shareholders,
+		shares[0].VerificationKey(),
+		publicShares,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -41,8 +60,8 @@ func ExampleShard() {
 		shares[5], shares[0], shares[3],
 	}
 
-	// Combine the subset of shares.
-	recovered, err := secretsharing.CombineShares(subset, threshold)
+	// CombineVerifiedShares checks the registry and submitted shares before reconstruction.
+	recovered, err := secretsharing.CombineVerifiedShares(registry, subset)
 	if err != nil {
 		panic(err)
 	}
@@ -56,8 +75,30 @@ func ExampleShard() {
 	// Output: Key split into shares and recombined with a subset of shares!
 }
 
-// ExampleShardAndVerify shows how to split a private key into shares, commit to the underlying polynomial, and verify
-// the generated public keys given the initial commitment.
+// ExampleCombineShares_trustedLocalShares shows raw reconstruction for shares that are already trusted by local context.
+// CombineShares does not authenticate share membership or detect well-formed tampering.
+func ExampleCombineShares_trustedLocalShares() {
+	g := ecc.Ristretto255Sha512
+	threshold := uint16(2)
+
+	secret := g.NewScalar().Random()
+	shares, err := secretsharing.Shard(g, secret, threshold, 3)
+	if err != nil {
+		panic(err)
+	}
+
+	recovered, err := secretsharing.CombineShares([]*keys.KeyShare{shares[0], shares[2]}, threshold)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(recovered.Equal(secret))
+
+	// Output: true
+}
+
+// ExampleVerify shows a per-share Feldman public-key consistency check. Use
+// CombineVerifiedShares with a validated registry for high-assurance reconstruction.
 func ExampleVerify() {
 	// These are the configuration parameters
 	g := ecc.Ristretto255Sha512
@@ -73,8 +114,8 @@ func ExampleVerify() {
 		panic(err)
 	}
 
-	// You can verify any public key using the commitment. This can be run by a single participant or any other
-	// participant access to the participant's public key.
+	// You can verify any public key using the commitment. This per-share check is useful for public material, but it
+	// does not replace verified reconstruction against a complete registry.
 	for _, keyshare := range shares {
 		// Let's get the public key. Other parties won't have access to the private key, naturally.
 		publicShare := keyshare.PublicKeyShare()
@@ -85,9 +126,9 @@ func ExampleVerify() {
 		}
 	}
 
-	fmt.Println("All key shares verified.")
+	fmt.Println("All public key shares passed the per-share check.")
 
-	// Output: All key shares verified.
+	// Output: All public key shares passed the per-share check.
 }
 
 func Example_jsonDecoding() {
@@ -97,20 +138,14 @@ func Example_jsonDecoding() {
 		panic(err)
 	}
 
-	keyShareJSON, err := json.Marshal(shares[0])
-	if err != nil {
-		panic(err)
-	}
-
-	var decodedKeyShare keys.KeyShare
-	if err = json.Unmarshal(keyShareJSON, &decodedKeyShare); err != nil {
-		panic(err)
-	}
-
 	publicShares := make([]*keys.PublicKeyShare, len(shares))
 	for _, share := range shares {
 		publicShares[share.Identifier()-1] = share.PublicKeyShare()
 	}
+
+	// PublicKeyShareRegistry JSON contains only public registry material. KeyShare
+	// JSON contains secret-share material and should only be used on protected
+	// storage or transport paths intended to carry private shares.
 	registry, err := keys.NewPublicKeyShareRegistry(g, 2, 3, shares[0].VerificationKey(), publicShares)
 	if err != nil {
 		panic(err)
@@ -126,8 +161,7 @@ func Example_jsonDecoding() {
 		panic(err)
 	}
 
-	fmt.Println(decodedKeyShare.Identifier() == shares[0].Identifier() &&
-		decodedRegistry.Get(decodedKeyShare.Identifier()) != nil)
+	fmt.Println(decodedRegistry.Get(shares[0].Identifier()) != nil)
 
 	// Output: true
 }

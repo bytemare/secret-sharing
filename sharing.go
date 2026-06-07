@@ -10,31 +10,11 @@
 package secretsharing
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/bytemare/ecc"
 
 	"github.com/bytemare/secret-sharing/keys"
-)
-
-var (
-	errThresholdIsZero    = errors.New("threshold is zero")
-	errNoShares           = errors.New("no shares provided")
-	errSecretIsZero       = errors.New("the provided secret is zero")
-	errTooFewShares       = errors.New("number of shares must be equal or greater than the threshold")
-	errPolyIsWrongSize    = errors.New("invalid number of coefficients in polynomial")
-	errPolySecretNotSet   = errors.New("provided polynomial's first coefficient not set to the secret")
-	errMultiGroup         = errors.New("incompatible EC groups found in set of key shares")
-	errInvalidGroup       = errors.New("invalid EC group")
-	errInvalidScalar      = errors.New("invalid scalar")
-	errScalarGroup        = errors.New("scalar has incompatible EC group")
-	errNilShare           = errors.New("key share is nil")
-	errNilRegistry        = errors.New("public key share registry is nil")
-	errInvalidRegistry    = errors.New("invalid public key share registry")
-	errInvalidKeyShare    = errors.New("invalid key share")
-	errMalformedCrypto    = errors.New("malformed cryptographic input")
-	errShareNotRegistered = errors.New("key share does not match registry")
 )
 
 func makeKeyShare(
@@ -121,7 +101,8 @@ func innerShard(g ecc.Group,
 }
 
 // Shard splits the secret into max shares, recoverable by a subset of threshold shares. If no secret is provided, a
-// new random secret is created. To use Verifiable Secret Sharing, use ShardAndCommit.
+// new random secret is created. When public registry material is available, prefer ShardAndCommit and
+// CombineVerifiedShares for high-assurance verifiable reconstruction.
 func Shard(
 	g ecc.Group,
 	secret *ecc.Scalar,
@@ -133,7 +114,8 @@ func Shard(
 }
 
 // ShardAndCommit does the same as Shard but populates the returned key shares with the VssCommitment to the polynomial.
-// If no secret is provided, a new random secret is created.
+// If no secret is provided, a new random secret is created. The returned shares can be used to build a validated
+// PublicKeyShareRegistry for high-assurance verifiable reconstruction with CombineVerifiedShares.
 func ShardAndCommit(g ecc.Group,
 	secret *ecc.Scalar,
 	threshold, maximum uint16,
@@ -169,6 +151,9 @@ func ShardAndCommitAndReturnPolynomial(
 
 // CombineShares recovers the sharded secret by combining at least threshold key shares. It recovers the constant term
 // of the interpolating polynomial defined by the set of key shares.
+//
+// This is raw, unchecked reconstruction for shares already trusted by the caller. It does not authenticate share
+// membership or detect well-formed tampering. When public registry material is available, prefer CombineVerifiedShares.
 func CombineShares(shares []*keys.KeyShare, threshold uint16) (*ecc.Scalar, error) {
 	if threshold == 0 {
 		return nil, errThresholdIsZero
@@ -246,7 +231,8 @@ func combineShares(g ecc.Group, shares []*keys.KeyShare, xCoords Polynomial) (ke
 	return key, nil
 }
 
-// CombineVerifiedShares verifies the registry and key shares before reconstructing the secret.
+// CombineVerifiedShares verifies a complete public registry and each submitted key share before reconstructing the
+// secret. Prefer this high-assurance verifiable reconstruction path when public registry material is available.
 func CombineVerifiedShares(
 	registry *keys.PublicKeyShareRegistry,
 	shares []*keys.KeyShare,
@@ -276,6 +262,10 @@ func makePolynomial(g ecc.Group, s *ecc.Scalar, threshold uint16, polynomial ...
 		return nil, errThresholdIsZero
 	}
 
+	if len(polynomial) != 0 && len(polynomial) != int(threshold) {
+		return nil, errPolyIsWrongSize
+	}
+
 	if !g.Available() {
 		return nil, errInvalidGroup
 	}
@@ -292,14 +282,11 @@ func makePolynomial(g ecc.Group, s *ecc.Scalar, threshold uint16, polynomial ...
 
 	p := NewPolynomial(threshold)
 
-	switch len(polynomial) {
-	case 0:
+	if len(polynomial) == 0 {
 		return makePolynomial0(g, s, p, threshold), nil
-	case int(threshold):
-		return makePolynomialCore(g, s, p, polynomial)
-	default:
-		return nil, errPolyIsWrongSize
 	}
+
+	return makePolynomialCore(g, s, p, polynomial)
 }
 
 func makePolynomial0(g ecc.Group, s *ecc.Scalar, p Polynomial, threshold uint16) Polynomial {
@@ -311,10 +298,23 @@ func makePolynomial0(g ecc.Group, s *ecc.Scalar, p Polynomial, threshold uint16)
 	}
 
 	for ; i < threshold; i++ {
-		p[i] = g.NewScalar().Random()
+		p[i] = randomPolynomialCoefficient(g, i, threshold)
 	}
 
 	return p
+}
+
+func randomPolynomialCoefficient(g ecc.Group, index, threshold uint16) *ecc.Scalar {
+	for {
+		coefficient := g.NewScalar().Random()
+		if index != 0 && index != threshold-1 {
+			return coefficient
+		}
+
+		if !coefficient.IsZero() {
+			return coefficient
+		}
+	}
 }
 
 func makePolynomialCore(g ecc.Group, s *ecc.Scalar, p, polynomial Polynomial) (Polynomial, error) {
@@ -330,12 +330,33 @@ func makePolynomialCore(g ecc.Group, s *ecc.Scalar, p, polynomial Polynomial) (P
 		return nil, err
 	}
 
-	if s != nil && !polynomial[0].Equal(s) {
+	if err := validateSecretPolynomial(p); err != nil {
+		zeroPolynomial(p)
+		return nil, err
+	}
+
+	if s != nil && !p[0].Equal(s) {
 		zeroPolynomial(p)
 		return nil, errPolySecretNotSet
 	}
 
 	return p, nil
+}
+
+func validateSecretPolynomial(p Polynomial) error {
+	if err := p.Verify(); err != nil {
+		return err
+	}
+
+	if p[0].IsZero() {
+		return errSecretIsZero
+	}
+
+	if len(p) > 1 && p[len(p)-1].IsZero() {
+		return errPolyHasZeroCoeff
+	}
+
+	return nil
 }
 
 func zeroPolynomial(p Polynomial) {
@@ -424,8 +445,12 @@ func validateRegisteredKeyShare(registry *keys.PublicKeyShareRegistry, share *ke
 	}
 
 	id := share.Identifier()
-	if id == 0 || id > registry.Total() || share.Group() != registry.Group() {
+	if id == 0 || share.Group() != registry.Group() {
 		return errInvalidKeyShare
+	}
+
+	if id > registry.Total() {
+		return errShareNotRegistered
 	}
 
 	if err := share.Validate(); err != nil {

@@ -138,7 +138,11 @@ func TestCompactRegistryRejectsMixedGroupsAndNonCanonicalOrder(t *testing.T) {
 		}
 	}
 
-	reversed := []*keys.PublicKeyShare{shares[2].PublicKeyShare(), shares[1].PublicKeyShare(), shares[0].PublicKeyShare()}
+	reversed := []*keys.PublicKeyShare{
+		shares[2].PublicKeyShare(),
+		shares[1].PublicKeyShare(),
+		shares[0].PublicKeyShare(),
+	}
 	reversedRegistry, err := keys.NewPublicKeyShareRegistry(
 		group,
 		2,

@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 
@@ -20,8 +19,6 @@ import (
 )
 
 const sharedHeaderLength = 5
-
-var errDecodePublicKey = errors.New("failed to decode public key")
 
 // PublicKeyShare specifies the public key of a participant identified with ID.
 // This can be used in a registry of participants.

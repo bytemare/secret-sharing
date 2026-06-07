@@ -380,28 +380,11 @@ func decodeRegistryJSON(receiver ecc.Group, data []byte) (*PublicKeyShareRegistr
 
 	pks := make(map[uint16]*PublicKeyShare, wire.Total)
 	for id, raw := range wire.PublicKeyShares {
-		var shareWire publicKeyShareJSON
-		if err = json.Unmarshal(raw, &shareWire); err != nil {
-			return nil, fmt.Errorf("%w: could not decode public key share %d: %w", errRegistryDecodePrefix, id, err)
-		}
+		var pk *PublicKeyShare
 
-		if shareWire.ID != id {
-			return nil, fmt.Errorf(
-				"%w: %w: public key share map key %d does not match share ID %d",
-				errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id, shareWire.ID,
-			)
-		}
-
-		pk := newPublicKeyShareReceiver(g)
-		if err = json.Unmarshal(raw, pk); err != nil {
-			return nil, fmt.Errorf("%w: could not decode public key share %d: %w", errRegistryDecodePrefix, id, err)
-		}
-
-		if len(pk.vssCommitment) != int(wire.Threshold) {
-			return nil, fmt.Errorf(
-				"%w: %w: public key share %d commitment length does not match threshold",
-				errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id,
-			)
+		pk, err = decodeJSONWirePKS(g, id, wire.Threshold, raw)
+		if err != nil {
+			return nil, err
 		}
 
 		if _, ok := pks[pk.id]; ok {
@@ -423,4 +406,32 @@ func decodeRegistryJSON(receiver ecc.Group, data []byte) (*PublicKeyShareRegistr
 	}
 
 	return registry, nil
+}
+
+func decodeJSONWirePKS(g ecc.Group, id, threshold uint16, raw json.RawMessage) (*PublicKeyShare, error) {
+	var shareWire publicKeyShareJSON
+	if err := json.Unmarshal(raw, &shareWire); err != nil {
+		return nil, fmt.Errorf("%w: could not decode public key share %d: %w", errRegistryDecodePrefix, id, err)
+	}
+
+	if shareWire.ID != id {
+		return nil, fmt.Errorf(
+			"%w: %w: public key share map key %d does not match share ID %d",
+			errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id, shareWire.ID,
+		)
+	}
+
+	pk := newPublicKeyShareReceiver(g)
+	if err := json.Unmarshal(raw, pk); err != nil {
+		return nil, fmt.Errorf("%w: could not decode public key share %d: %w", errRegistryDecodePrefix, id, err)
+	}
+
+	if len(pk.vssCommitment) != int(threshold) {
+		return nil, fmt.Errorf(
+			"%w: %w: public key share %d commitment length does not match threshold",
+			errRegistryDecodePrefix, errEncodingInvalidJSONEncoding, id,
+		)
+	}
+
+	return pk, nil
 }

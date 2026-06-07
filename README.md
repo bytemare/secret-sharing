@@ -4,7 +4,10 @@
 [![codecov](https://codecov.io/gh/bytemare/secret-sharing/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/bytemare/secret-sharing)
 
 ```go
-  import "github.com/bytemare/secret-sharing"
+import (
+	"github.com/bytemare/secret-sharing"
+	"github.com/bytemare/secret-sharing/keys"
+)
 ```
 
 This package implements Shamir's Secret Sharing extended with Feldman's Verifiable Secret Sharing over elliptic curve groups.
@@ -20,13 +23,60 @@ you need a truly decentralized key generation, you can use the [dkg package](htt
 
 You can find the documentation and usage examples in [the package doc](https://pkg.go.dev/github.com/bytemare/secret-sharing).
 
+## Reconstruction
+
+The recommended reconstruction path is registry-backed verification: create committed shares with `ShardAndCommit`,
+build a validated `keys.PublicKeyShareRegistry` from the public share material, then reconstruct with
+`CombineVerifiedShares`.
+
+```go
+shares, err := secretsharing.ShardAndCommit(group, secret, threshold, total)
+if err != nil {
+    return err
+}
+
+publicShares := make([]*keys.PublicKeyShare, 0, len(shares))
+for _, share := range shares {
+    publicShares = append(publicShares, share.PublicKeyShare())
+}
+
+registry, err := keys.NewPublicKeyShareRegistry(
+    group,
+    threshold,
+    total,
+    shares[0].VerificationKey(),
+    publicShares,
+)
+if err != nil {
+    return err
+}
+
+recovered, err := secretsharing.CombineVerifiedShares(registry, submittedShares)
+if err != nil {
+    return err
+}
+```
+
+`CombineShares` remains available for trusted/local shares only:
+
+```go
+recovered, err := secretsharing.CombineShares(trustedShares, threshold)
+```
+
+Raw reconstruction does not authenticate share membership or detect well-formed tampering. Use
+`CombineVerifiedShares` when public registry material is available.
+
 ## Decoding
 
 Encoded values are self-describing: the top-level `group` field is used to initialize zero-value receivers before nested
 scalars and elements are decoded.
 
+Prefer serializing public-only `keys.PublicKeyShare` or `keys.PublicKeyShareRegistry` values when distributing registry
+metadata. A `keys.KeyShare` contains a participant's secret share; its JSON, compact byte encoding, and hex encoding must
+be handled like private keys: no logs, public transport, telemetry, unauthenticated storage, or accidental publication.
+
 ```go
-var decoded keys.KeyShare
+var decoded keys.PublicKeyShareRegistry
 if err := json.Unmarshal(data, &decoded); err != nil {
     return err
 }
@@ -36,11 +86,14 @@ If the group is already fixed by protocol or configuration, use a pinned receive
 group:
 
 ```go
-decoded := keys.NewKeyShareReceiver(g) // or NewPublicKeyShareReceiver or NewPublicKeyShareRegistryReceiver
+decoded := keys.NewPublicKeyShareRegistryReceiver(g) // or NewPublicKeyShareReceiver for one public share
 if err := json.Unmarshal(data, decoded); err != nil {
     return err
 }
 ```
+
+Use `keys.NewKeyShareReceiver(g)` only for protected storage or transport paths that are specifically intended to carry
+secret shares.
 
 ## Versioning
 

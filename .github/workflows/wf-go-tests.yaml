@@ -32,4 +32,4 @@ jobs:
     uses: bytemare/workflows/.github/workflows/test-go.yaml@98f673361628d80f57af38608823fc764fc35841
     with:
       version: ${{ matrix.go }}
-      test-command: "go test -v -race -vet=all ./tests/..."
+      test-command: "go test -v -race -vet=all ./..."

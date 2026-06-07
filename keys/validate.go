@@ -9,7 +9,6 @@
 package keys
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -18,11 +17,6 @@ import (
 )
 
 const errValidateFMT = "%s: %w"
-
-var (
-	errNilOrInvalid     = errors.New("nil or invalid")
-	errGroupNotMatching = errors.New("group does not match")
-)
 
 func elementGroup(element *ecc.Element) (group ecc.Group, ok bool) {
 	if element == nil {

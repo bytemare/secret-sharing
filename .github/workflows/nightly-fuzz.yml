@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.26' ]
+        go: [ '1.26.3' ]
     runs-on: ubuntu-latest
 
     steps:

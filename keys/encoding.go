@@ -12,45 +12,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 
 	"github.com/bytemare/ecc"
 )
-
-var (
-	errEncodingInvalidGroup                  = errors.New("invalid group identifier")
-	errEncodingInvalidLength                 = errors.New("invalid encoding length")
-	errEncodingInvalidJSONEncoding           = errors.New("invalid JSON encoding")
-	errEncodingGroupMismatch                 = errors.New("encoded group does not match receiver group")
-	errInvalidPolynomialLength               = errors.New("invalid polynomial length (exceeds uint16 limit 65535)")
-	errPublicKeyShareDecodePrefix            = errors.New("failed to decode PublicKeyShare")
-	errKeyShareDecodePrefix                  = errors.New("failed to decode KeyShare")
-	errRegistryDecodePrefix                  = errors.New("failed to decode PublicKeyShareRegistry")
-	errPublicKeyShareRegistered              = errors.New("the public key share is already registered")
-	errNilPublicKeyShare                     = errors.New("public key share is nil")
-	errNilKeyShare                           = errors.New("key share is nil")
-	errNilRegistry                           = errors.New("public key share registry is nil")
-	errInvalidIdentifier                     = errors.New("identifier is zero or exceeds registry total")
-	errInvalidRegistryParameters             = errors.New("invalid total or threshold")
-	errCommitmentLengthDoesNotMatchThreshold = errors.New(
-		"public key share commitment length does not match threshold",
-	)
-	errRegistryShareCountDoesNotMatchTotal     = errors.New("public key share count does not match total")
-	errRegistryMapKeyDoesNotMatchShareID       = errors.New("public key share map key does not match share ID")
-	errInvalidVSSShare                         = errors.New("public key share does not verify against commitment")
-	errVerificationKeyDoesNotMatchCommitment   = errors.New("verification key does not match commitment")
-	errCommitmentsDoNotMatch                   = errors.New("public key shares do not have the same commitment")
-	errPublicKeyDoesNotMatchSecret             = errors.New("public key does not match secret key")
-	errEncodingNonCanonicalPublicKeyShareOrder = errors.New("encoded public key shares are not in canonical order")
-	errInvalidRegistry                         = errors.New("invalid public key share registry")
-	errVerifyUnknownID                         = errors.New("the requested identifier is not registered")
-	errNilPubKey                               = errors.New("the provided public key is nil")
-	errRegistryHasNilPublicKey                 = errors.New("encountered a nil public key in registry")
-	errVerifyBadPubKey                         = errors.New("the public key differs from the one registered")
-	errEncodingPKSDuplication                  = errors.New("multiple encoded public key shares with same ID")
-)
-
-const errFmt = "%w: %w"
 
 // helper functions
 

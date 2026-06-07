@@ -9,26 +9,22 @@
 package secretsharing
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/bytemare/ecc"
 )
 
-var (
-	errPolyXIsZero         = errors.New("identifier for interpolation is nil or zero")
-	errPolyHasZeroCoeff    = errors.New("one of the polynomial's coefficients is zero")
-	errPolyHasDuplicates   = errors.New("the polynomial has duplicate coefficients")
-	errPolyHasNilCoeff     = errors.New("the polynomial has a nil coefficient")
-	errPolyCoeffInexistant = errors.New("the identifier does not exist in the polynomial")
-)
-
-// Polynomial over scalars, represented as a list of t+1 coefficients, where t is the threshold.
+// Polynomial over scalars, represented as a list of coefficients. Secret-sharing polynomials contain threshold
+// coefficients for a degree threshold-1 polynomial.
 // The constant term is in the first position and the highest degree coefficient is in the last position.
-// All operations on the polynomial's coefficient are done modulo the scalar's group order.
+// All operations on the polynomial's coefficients are done modulo the scalar's group order.
+//
+// Interpolation helpers also use Polynomial as a list of interpolation identifiers. For that use, validate the list
+// with VerifyInterpolationIDs, because interpolation identifiers must be non-zero and unique while polynomial
+// coefficients may contain zero or repeated non-secret, non-leading values.
 type Polynomial []*ecc.Scalar
 
-// NewPolynomial returns a slice of Scalars with the capacity to hold the desired coefficients.
+// NewPolynomial returns a Polynomial with the desired number of coefficient slots.
 func NewPolynomial(coefficients uint16) Polynomial {
 	return make(Polynomial, coefficients)
 }
@@ -77,15 +73,11 @@ func NewPolynomialFromListFunc[S ~[]E, E any](
 	return polynomial, nil
 }
 
-// the only call to copyPolynomial ensure that both polynomials are of the same length.
+// copyPolynomial assumes that both polynomials are of the same length.
 func copyPolynomial(dst, src Polynomial) error {
 	for index, coeff := range src {
 		if coeff == nil {
 			return errPolyHasNilCoeff
-		}
-
-		if coeff.IsZero() {
-			return errPolyHasZeroCoeff
 		}
 
 		dst[index] = coeff.Copy()
@@ -94,14 +86,23 @@ func copyPolynomial(dst, src Polynomial) error {
 	return nil
 }
 
-// Verify returns an appropriate error if the polynomial has a nil or 0 coefficient, or duplicates.
+// Verify returns an appropriate error if the polynomial is empty or has nil, malformed, or mixed-group coefficients.
+// It permits zero and repeated coefficients. Sharding APIs separately reject a zero secret term and a zero leading
+// coefficient for explicit secret polynomials.
 func (p Polynomial) Verify() error {
+	_, err := p.group()
+	return err
+}
+
+// VerifyInterpolationIDs returns an appropriate error if the polynomial is not a valid interpolation identifier list.
+// Interpolation identifiers must be non-empty, valid same-group scalars, non-zero, and unique.
+func (p Polynomial) VerifyInterpolationIDs() error {
 	if _, err := p.group(); err != nil {
 		return err
 	}
 
 	if p.hasZero() {
-		return errPolyHasZeroCoeff
+		return errPolyXIsZero
 	}
 
 	if p.hasDuplicates() {
@@ -111,7 +112,8 @@ func (p Polynomial) Verify() error {
 	return nil
 }
 
-// VerifyInterpolatingInput checks compatibility of the input id with the polynomial. If not, an error is returned.
+// VerifyInterpolatingInput checks compatibility of the input id with this interpolation identifier list. If not, an
+// error is returned.
 func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
 	idGroup, ok := polynomialScalarGroup(id)
 	if id == nil {
@@ -126,7 +128,7 @@ func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
 		return errPolyXIsZero
 	}
 
-	if err := p.Verify(); err != nil {
+	if err := p.VerifyInterpolationIDs(); err != nil {
 		return err
 	}
 
@@ -175,7 +177,7 @@ func (p Polynomial) Evaluate(x *ecc.Scalar) (value *ecc.Scalar) {
 }
 
 // DeriveInterpolatingValue derives a value used for polynomial interpolation.
-// id and all the coefficients must be non-zero scalars.
+// p is interpreted as the interpolation identifier list; id and all identifiers must be non-zero scalars.
 func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (value *ecc.Scalar, err error) {
 	defer func() {
 		if recover() != nil {
@@ -260,7 +262,7 @@ func (p Polynomial) group() (ecc.Group, error) {
 	return group, nil
 }
 
-// has returns whether s is a coefficient of the polynomial.
+// has returns whether s appears in the polynomial.
 func (p Polynomial) has(s *ecc.Scalar) bool {
 	for _, si := range p {
 		if si.Equal(s) {
@@ -271,7 +273,7 @@ func (p Polynomial) has(s *ecc.Scalar) bool {
 	return false
 }
 
-// hasZero returns whether one of the polynomials coefficients is 0.
+// hasZero returns whether one of the polynomial's scalars is 0.
 func (p Polynomial) hasZero() bool {
 	for _, xj := range p {
 		if xj.IsZero() {
@@ -282,7 +284,7 @@ func (p Polynomial) hasZero() bool {
 	return false
 }
 
-// hasDuplicates returns whether the polynomial has at least one coefficient that appears more than once.
+// hasDuplicates returns whether the polynomial has at least one scalar that appears more than once.
 func (p Polynomial) hasDuplicates() bool {
 	visited := make(map[string]bool, len(p))
 

@@ -10,6 +10,7 @@ package secretsharing_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -59,6 +60,10 @@ func expectJSONUnmarshalError(t testing.TB, receiver json.Unmarshaler, data []by
 	err := json.Unmarshal(data, receiver)
 	if err == nil || !strings.HasPrefix(err.Error(), expectedPrefix) {
 		t.Fatalf("expected error prefix %q, got %q", expectedPrefix, err)
+	}
+
+	if !errors.Is(err, keys.ErrEncodingFailure) {
+		t.Fatalf("expected %q to match %q", err, keys.ErrEncodingFailure)
 	}
 }
 

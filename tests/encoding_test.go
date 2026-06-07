@@ -10,20 +10,27 @@ package secretsharing_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/bytemare/secret-sharing/keys"
 )
 
 func testDecodingBytesNilEmpty(decoder serde, expectedError string) error {
 	// nil input
 	if err := decoder.Decode(nil); err == nil || err.Error() != expectedError {
 		return fmt.Errorf("expected error %q, got %q", expectedError, err)
+	} else if !errors.Is(err, keys.ErrEncodingFailure) {
+		return fmt.Errorf("expected %q to match %q", err, keys.ErrEncodingFailure)
 	}
 
 	// empty input
 	if err := decoder.Decode([]byte{}); err == nil || err.Error() != expectedError {
 		return fmt.Errorf("expected error %q, got %q", expectedError, err)
+	} else if !errors.Is(err, keys.ErrEncodingFailure) {
+		return fmt.Errorf("expected %q to match %q", err, keys.ErrEncodingFailure)
 	}
 
 	return nil
@@ -31,7 +38,8 @@ func testDecodingBytesNilEmpty(decoder serde, expectedError string) error {
 
 func testDecodeHexFails(t *testing.T, thing1, thing2 serde, expectedErrorPrefix string) {
 	// empty string
-	if err := thing2.DecodeHex(""); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) {
+	if err := thing2.DecodeHex(""); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) ||
+		!errors.Is(err, keys.ErrEncodingFailure) {
 		t.Fatal("expected error on empty string")
 	}
 
@@ -39,7 +47,8 @@ func testDecodeHexFails(t *testing.T, thing1, thing2 serde, expectedErrorPrefix 
 	expectedError := expectedErrorPrefix + " encoding/hex: odd length hex string"
 	e := thing1.Hex()
 
-	if err := thing2.DecodeHex(e[:len(e)-1]); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) {
+	if err := thing2.DecodeHex(e[:len(e)-1]); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix) ||
+		!errors.Is(err, keys.ErrEncodingFailure) {
 		t.Fatal("expected error on empty string")
 	}
 
@@ -53,6 +62,8 @@ func testDecodeHexFails(t *testing.T, thing1, thing2 serde, expectedErrorPrefix 
 		t.Fatal("expected error on malformed string")
 	} else if err.Error() != expectedError {
 		t.Fatalf("unexpected error: want %q, got %q", expectedError, err)
+	} else if !errors.Is(err, keys.ErrEncodingFailure) {
+		t.Fatalf("expected %q to match %q", err, keys.ErrEncodingFailure)
 	}
 }
 
@@ -60,6 +71,8 @@ func testDecodeHexOddLength(encoder, decoder serde, expectedError string) error 
 	h := encoder.Hex()
 	if err := decoder.DecodeHex(h[:len(h)-1]); err == nil || err.Error() != expectedError {
 		return fmt.Errorf("expected error %q, got %q", expectedError, err)
+	} else if !errors.Is(err, keys.ErrEncodingFailure) {
+		return fmt.Errorf("expected %q to match %q", err, keys.ErrEncodingFailure)
 	}
 
 	return nil
@@ -83,6 +96,9 @@ func testJSONBaddie(in any, decoded json.Unmarshaler, baddie jsonTesterBaddie) e
 		if err == nil ||
 			!strings.HasPrefix(err.Error(), baddie.expectedError) {
 			return fmt.Errorf("expected error %q, got %q", baddie.expectedError, err)
+		} else if strings.HasPrefix(baddie.expectedError, "failed to decode") &&
+			!errors.Is(err, keys.ErrEncodingFailure) {
+			return fmt.Errorf("expected %q to match %q", err, keys.ErrEncodingFailure)
 		}
 	} else {
 		if err != nil {

@@ -133,6 +133,8 @@ linters:
         min-complexity: 17
     gocritic:
       enable-all: true
+      disabled-checks:
+        - sloppyReassign
     gosec:
       excludes:
         - G115

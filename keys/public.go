@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 
@@ -20,32 +21,91 @@ import (
 
 const sharedHeaderLength = 5
 
+var errDecodePublicKey = errors.New("failed to decode public key")
+
 // PublicKeyShare specifies the public key of a participant identified with ID.
 // This can be used in a registry of participants.
 type PublicKeyShare struct {
-	// The PublicKey of Secret belonging to the participant.
-	PublicKey *ecc.Element `json:"publicKey"`
-
-	// The VssCommitment to the polynomial the key was created with.
-	VssCommitment []*ecc.Element `json:"vssCommitment,omitempty"`
-
-	// ID of the participant.
-	ID uint16 `json:"id"`
-
-	// Group specifies the elliptic curve group the public key and commitments are part of.
-	Group ecc.Group `json:"group"`
+	publicKey     *ecc.Element
+	vssCommitment []*ecc.Element
+	id            uint16
+	group         ecc.Group
 }
 
-// NewPublicKeyShare returns a PublicKeyShare receiver pinned to g for JSON decoding.
-// When passed to json.Unmarshal, the encoded top-level group and every encoded element must belong to g.
-// Use a zero-value receiver instead when the group should be inferred from self-describing JSON.
-func NewPublicKeyShare(g ecc.Group) *PublicKeyShare {
-	p := &PublicKeyShare{Group: g}
+func newPublicKeyShareReceiver(g ecc.Group) *PublicKeyShare {
+	p := &PublicKeyShare{group: g}
 	if g.Available() {
-		p.PublicKey = g.NewElement()
+		p.publicKey = g.NewElement()
 	}
 
 	return p
+}
+
+// NewPublicKeyShareReceiver returns a PublicKeyShare receiver pinned to g for JSON and compact decoding.
+// Use a zero-value receiver instead when the group should be inferred from self-describing input.
+func NewPublicKeyShareReceiver(g ecc.Group) *PublicKeyShare {
+	return newPublicKeyShareReceiver(g)
+}
+
+// NewPublicKeyShare returns a valid public key share with defensive copies of the caller's key material.
+func NewPublicKeyShare(
+	g ecc.Group,
+	id uint16,
+	publicKey *ecc.Element,
+	commitment []*ecc.Element,
+) (*PublicKeyShare, error) {
+	share := &PublicKeyShare{
+		publicKey:     publicKey,
+		vssCommitment: commitment,
+		id:            id,
+		group:         g,
+	}
+	if err := share.Validate(); err != nil {
+		return nil, err
+	}
+
+	return clonePublicKeyShare(share), nil
+}
+
+// Group returns the elliptic curve group used for this public key share.
+func (p *PublicKeyShare) Group() ecc.Group {
+	if p == nil {
+		return 0
+	}
+
+	return p.group
+}
+
+// Identifier returns the identity for this public key share.
+func (p *PublicKeyShare) Identifier() uint16 {
+	if p == nil {
+		return 0
+	}
+
+	return p.id
+}
+
+// PublicKey returns a defensive copy of the participant's public key.
+func (p *PublicKeyShare) PublicKey() *ecc.Element {
+	if p == nil || p.publicKey == nil {
+		return nil
+	}
+
+	return cloneElement(p.publicKey)
+}
+
+// Commitment returns a defensive copy of the VSS commitment.
+func (p *PublicKeyShare) Commitment() []*ecc.Element {
+	if p == nil {
+		return nil
+	}
+
+	return cloneCommitment(p.vssCommitment)
+}
+
+// Validate returns an error unless p satisfies the public key share invariants.
+func (p *PublicKeyShare) Validate() error {
+	return validatePublicKeyShare(p)
 }
 
 func publicKeyShareLength(g ecc.Group, polyLen int) int {
@@ -55,13 +115,17 @@ func publicKeyShareLength(g ecc.Group, polyLen int) int {
 
 // Encode serializes p into a compact byte string.
 func (p *PublicKeyShare) Encode() []byte {
-	out := make([]byte, sharedHeaderLength, publicKeyShareLength(p.Group, len(p.VssCommitment)))
-	out[0] = byte(p.Group)
-	binary.LittleEndian.PutUint16(out[1:3], p.ID)
-	binary.LittleEndian.PutUint16(out[3:5], uint16(len(p.VssCommitment)))
-	out = append(out, p.PublicKey.Encode()...)
+	if err := p.Validate(); err != nil {
+		return nil
+	}
 
-	for _, c := range p.VssCommitment {
+	out := make([]byte, sharedHeaderLength, publicKeyShareLength(p.group, len(p.vssCommitment)))
+	out[0] = byte(p.group)
+	binary.LittleEndian.PutUint16(out[1:3], p.id)
+	binary.LittleEndian.PutUint16(out[3:5], uint16(len(p.vssCommitment)))
+	out = append(out, p.publicKey.Encode()...)
+
+	for _, c := range p.vssCommitment {
 		out = append(out, c.Encode()...)
 	}
 
@@ -75,6 +139,10 @@ func (p *PublicKeyShare) Hex() string {
 
 // Decode deserializes the compact encoding obtained from Encode(), or returns an error.
 func (p *PublicKeyShare) Decode(data []byte) error {
+	if p == nil {
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, errNilPublicKeyShare)
+	}
+
 	g, expectedLength, cLen, err := decodeKeyShareHeader(data)
 	if err != nil {
 		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
@@ -97,12 +165,40 @@ func (p *PublicKeyShare) DecodeHex(h string) error {
 	return p.Decode(b)
 }
 
+// MarshalJSON encodes p using the stable public wire contract.
+func (p *PublicKeyShare) MarshalJSON() ([]byte, error) {
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
+
+	encoded, err := json.Marshal(struct {
+		PublicKey     *ecc.Element   `json:"publicKey"`
+		VssCommitment []*ecc.Element `json:"vssCommitment,omitempty"`
+		ID            uint16         `json:"id"`
+		Group         ecc.Group      `json:"group"`
+	}{
+		PublicKey:     p.publicKey,
+		VssCommitment: p.vssCommitment,
+		ID:            p.id,
+		Group:         p.group,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("json marshaling public key share: %w", err)
+	}
+
+	return encoded, nil
+}
+
 // UnmarshalJSON decodes data into p, or returns an error.
-// If p.Group is zero, the group is inferred from the encoded top-level group.
-// If p.Group is non-zero, it must identify an available group and match the encoded top-level group.
+// If p.Group() is zero, the group is inferred from the encoded top-level group.
+// If p.Group() is non-zero, it must identify an available group and match the encoded top-level group.
 // Every encoded element group must match the resolved group.
 func (p *PublicKeyShare) UnmarshalJSON(data []byte) error {
-	decoded, err := decodePublicKeyShareJSON(p.Group, data)
+	if p == nil {
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, errNilPublicKeyShare)
+	}
+
+	decoded, err := decodePublicKeyShareJSON(p.group, data)
 	if err != nil {
 		return err
 	}
@@ -120,42 +216,51 @@ func decodePublicKeyShareJSON(receiver ecc.Group, data []byte) (*PublicKeyShare,
 
 	g, err := resolveDecodedGroup(receiver, wire.Group)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
 	if err = requireJSONField(wire.PublicKey); err != nil {
-		return nil, err
+		return nil, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
 
 	if len(wire.VssCommitment) > math.MaxUint16 {
-		return nil, errInvalidPolynomialLength
+		return nil, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, errInvalidPolynomialLength)
 	}
 
 	pk := g.NewElement()
 	if err = json.Unmarshal(wire.PublicKey, pk); err != nil {
-		return nil, fmt.Errorf("failed to decode public key: %w", err)
+		return nil, fmt.Errorf("%w: %w: %w", errPublicKeyShareDecodePrefix, errDecodePublicKey, err)
 	}
 
 	commitment := make([]*ecc.Element, len(wire.VssCommitment))
 	for i, raw := range wire.VssCommitment {
+		if err = requireJSONField(raw); err != nil {
+			return nil, fmt.Errorf("%w, failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
+		}
+
 		c := g.NewElement()
 		if err = json.Unmarshal(raw, c); err != nil {
-			return nil, fmt.Errorf("failed to decode commitment %d: %w", i+1, err)
+			return nil, fmt.Errorf("%w: failed to decode commitment %d: %w", errPublicKeyShareDecodePrefix, i+1, err)
 		}
 
 		commitment[i] = c
 	}
 
-	return &PublicKeyShare{
-		PublicKey:     pk,
-		VssCommitment: commitment,
-		ID:            wire.ID,
-		Group:         g,
-	}, nil
+	share := &PublicKeyShare{
+		publicKey:     pk,
+		vssCommitment: commitment,
+		id:            wire.ID,
+		group:         g,
+	}
+	if err = share.Validate(); err != nil {
+		return nil, fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
+	}
+
+	return share, nil
 }
 
 func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
-	g, err := resolveDecodedGroup(p.Group, g)
+	g, err := resolveDecodedGroup(p.group, g)
 	if err != nil {
 		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
 	}
@@ -165,7 +270,7 @@ func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
 
 	pk := g.NewElement()
 	if err = pk.Decode(data[sharedHeaderLength : sharedHeaderLength+eLen]); err != nil {
-		return fmt.Errorf("%w: failed to decode public key: %w", errPublicKeyShareDecodePrefix, err)
+		return fmt.Errorf("%w: %w: %w", errPublicKeyShareDecodePrefix, errDecodePublicKey, err)
 	}
 
 	i := 0
@@ -181,10 +286,17 @@ func (p *PublicKeyShare) decode(g ecc.Group, cLen int, data []byte) error {
 		i++
 	}
 
-	p.Group = g
-	p.ID = id
-	p.PublicKey = pk
-	p.VssCommitment = commitment
+	share := &PublicKeyShare{
+		publicKey:     pk,
+		vssCommitment: commitment,
+		id:            id,
+		group:         g,
+	}
+	if err = share.Validate(); err != nil {
+		return fmt.Errorf(errFmt, errPublicKeyShareDecodePrefix, err)
+	}
+
+	*p = *share
 
 	return nil
 }

@@ -36,7 +36,7 @@ If the group is already fixed by protocol or configuration, use a pinned receive
 group:
 
 ```go
-decoded := keys.NewKeyShare(g) // or NewPublicKeyShare or NewEmptyPublicKeyShareRegistry
+decoded := keys.NewKeyShareReceiver(g) // or NewPublicKeyShareReceiver or NewPublicKeyShareRegistryReceiver
 if err := json.Unmarshal(data, decoded); err != nil {
     return err
 }

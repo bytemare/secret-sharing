@@ -29,13 +29,14 @@ func makeFuzzMaterial(f *testing.F, g ecc.Group) ([]*keys.KeyShare, *keys.Public
 		f.Fatal(err)
 	}
 
-	registry := keys.NewPublicKeyShareRegistry(g, 2, 3)
-	for _, share := range shares {
-		if err = registry.Add(share.Public()); err != nil {
-			f.Fatal(err)
-		}
+	public := make([]*keys.PublicKeyShare, len(shares))
+	for i, share := range shares {
+		public[i] = share.PublicKeyShare()
 	}
-	registry.VerificationKey = shares[0].VerificationKey
+	registry, err := keys.NewPublicKeyShareRegistry(g, 2, 3, shares[0].VerificationKey(), public)
+	if err != nil {
+		f.Fatal(err)
+	}
 
 	return shares, registry
 }
@@ -162,7 +163,7 @@ func assertRegistryRoundTrip(t *testing.T, registry *keys.PublicKeyShareRegistry
 func FuzzPublicKeyShareJSONDecode(f *testing.F) {
 	for _, g := range groups {
 		shares, _ := makeFuzzMaterial(f, g)
-		addJSONSeed(f, g, shares[0].Public())
+		addJSONSeed(f, g, shares[0].PublicKeyShare())
 	}
 
 	f.Fuzz(func(t *testing.T, groupID byte, data []byte) {
@@ -173,7 +174,7 @@ func FuzzPublicKeyShareJSONDecode(f *testing.F) {
 
 		inferred := new(keys.PublicKeyShare)
 		if err := json.Unmarshal(data, inferred); err == nil {
-			if !inferred.Group.Available() || inferred.PublicKey == nil {
+			if !inferred.Group().Available() || inferred.PublicKey() == nil {
 				t.Fatalf("inferred public key share has invalid group or nil public key")
 			}
 
@@ -190,9 +191,9 @@ func FuzzPublicKeyShareJSONDecode(f *testing.F) {
 			}
 		}
 
-		pinned := keys.NewPublicKeyShare(g)
+		pinned := keys.NewPublicKeyShareReceiver(g)
 		if err := json.Unmarshal(data, pinned); err == nil {
-			if pinned.Group != g || pinned.PublicKey == nil {
+			if pinned.Group() != g || pinned.PublicKey() == nil {
 				t.Fatalf("pinned public key share has invalid group or nil public key")
 			}
 
@@ -200,7 +201,7 @@ func FuzzPublicKeyShareJSONDecode(f *testing.F) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			roundTrip := keys.NewPublicKeyShare(g)
+			roundTrip := keys.NewPublicKeyShareReceiver(g)
 			if err = json.Unmarshal(encoded, roundTrip); err != nil {
 				t.Fatal(err)
 			}
@@ -227,9 +228,9 @@ func FuzzKeyShareJSONDecode(f *testing.F) {
 		inferred := new(keys.KeyShare)
 		if err := json.Unmarshal(data, inferred); err == nil {
 			if !inferred.Group().Available() ||
-				inferred.Secret == nil ||
-				inferred.VerificationKey == nil ||
-				inferred.PublicKey == nil {
+				inferred.SecretKey() == nil ||
+				inferred.VerificationKey() == nil ||
+				inferred.PublicKeyShare().PublicKey() == nil {
 				t.Fatalf("inferred key share has invalid group or nil key material")
 			}
 
@@ -246,9 +247,12 @@ func FuzzKeyShareJSONDecode(f *testing.F) {
 			}
 		}
 
-		pinned := keys.NewKeyShare(g)
+		pinned := keys.NewKeyShareReceiver(g)
 		if err := json.Unmarshal(data, pinned); err == nil {
-			if pinned.Group() != g || pinned.Secret == nil || pinned.VerificationKey == nil || pinned.PublicKey == nil {
+			if pinned.Group() != g ||
+				pinned.SecretKey() == nil ||
+				pinned.VerificationKey() == nil ||
+				pinned.PublicKeyShare().PublicKey() == nil {
 				t.Fatalf("pinned key share has invalid group or nil key material")
 			}
 
@@ -256,7 +260,7 @@ func FuzzKeyShareJSONDecode(f *testing.F) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			roundTrip := keys.NewKeyShare(g)
+			roundTrip := keys.NewKeyShareReceiver(g)
 			if err = json.Unmarshal(encoded, roundTrip); err != nil {
 				t.Fatal(err)
 			}
@@ -282,9 +286,9 @@ func FuzzPublicKeyShareRegistryJSONDecode(f *testing.F) {
 
 		inferred := new(keys.PublicKeyShareRegistry)
 		if err := json.Unmarshal(data, inferred); err == nil {
-			if !inferred.Group.Available() ||
-				inferred.VerificationKey == nil ||
-				len(inferred.PublicKeyShares) != int(inferred.Total) {
+			if !inferred.Group().Available() ||
+				inferred.VerificationKey() == nil ||
+				len(inferred.Shares()) != int(inferred.Total()) {
 				t.Fatalf("inferred registry has invalid group, nil verification key, or inconsistent total")
 			}
 
@@ -301,9 +305,11 @@ func FuzzPublicKeyShareRegistryJSONDecode(f *testing.F) {
 			}
 		}
 
-		pinned := keys.NewEmptyPublicKeyShareRegistry(g)
+		pinned := keys.NewPublicKeyShareRegistryReceiver(g)
 		if err := json.Unmarshal(data, pinned); err == nil {
-			if pinned.Group != g || pinned.VerificationKey == nil || len(pinned.PublicKeyShares) != int(pinned.Total) {
+			if pinned.Group() != g ||
+				pinned.VerificationKey() == nil ||
+				len(pinned.Shares()) != int(pinned.Total()) {
 				t.Fatalf("pinned registry has invalid group, nil verification key, or inconsistent total")
 			}
 
@@ -311,7 +317,7 @@ func FuzzPublicKeyShareRegistryJSONDecode(f *testing.F) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			roundTrip := keys.NewEmptyPublicKeyShareRegistry(g)
+			roundTrip := keys.NewPublicKeyShareRegistryReceiver(g)
 			if err = json.Unmarshal(encoded, roundTrip); err != nil {
 				t.Fatal(err)
 			}
@@ -326,10 +332,10 @@ func FuzzPublicKeyShareRegistryJSONDecode(f *testing.F) {
 func FuzzCompactDecoders(f *testing.F) {
 	for _, g := range groups {
 		shares, registry := makeFuzzMaterial(f, g)
-		f.Add(shares[0].Public().Encode())
+		f.Add(shares[0].PublicKeyShare().Encode())
 		f.Add(shares[0].Encode())
 		f.Add(registry.Encode())
-		f.Add([]byte(shares[0].Public().Hex()))
+		f.Add([]byte(shares[0].PublicKeyShare().Hex()))
 		f.Add([]byte(shares[0].Hex()))
 		f.Add([]byte(registry.Hex()))
 	}
@@ -433,14 +439,14 @@ func FuzzShardAndCombine(f *testing.F) {
 			}
 
 			if plainShares[i].Group() != g ||
-				plainShares[i].Identifier() != plainShares[i].ID ||
-				plainShares[i].SecretKey() != plainShares[i].Secret ||
-				plainShares[i].Public() != &plainShares[i].PublicKeyShare {
+				plainShares[i].Identifier() != uint16(i+1) ||
+				plainShares[i].SecretKey() == nil ||
+				plainShares[i].PublicKeyShare() == nil {
 				t.Fatalf("key share accessors returned inconsistent values")
 			}
 		}
 
-		recovered, err := secretsharing.CombineShares(plainShares[:threshold])
+		recovered, err := secretsharing.CombineShares(plainShares[:threshold], threshold)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -448,7 +454,7 @@ func FuzzShardAndCombine(f *testing.F) {
 			t.Fatalf("threshold shares did not recover the secret")
 		}
 
-		recovered, err = secretsharing.CombineShares(plainShares)
+		recovered, err = secretsharing.CombineShares(plainShares, threshold)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -473,21 +479,26 @@ func FuzzPolynomialOperations(f *testing.F) {
 		count := uint16(countSeed%8) + 1
 		base := offset%60000 + 1
 		ids := make([]uint16, count)
-		shares := make([]*keys.KeyShare, count)
 		for i := range count {
 			id := base + i
 			ids[i] = id
-			shares[i] = &keys.KeyShare{PublicKeyShare: keys.PublicKeyShare{ID: id, Group: g}}
 		}
 
-		fromInts := secretsharing.NewPolynomialFromIntegers(g, ids)
-		fromList := secretsharing.NewPolynomialFromListFunc(
+		fromInts, err := secretsharing.NewPolynomialFromIntegers(g, ids)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fromList, err := secretsharing.NewPolynomialFromListFunc(
 			g,
-			shares,
-			func(share *keys.KeyShare) *ecc.Scalar {
-				return g.NewScalar().SetUInt64(uint64(share.Identifier()))
+			ids,
+			func(id uint16) *ecc.Scalar {
+				return g.NewScalar().SetUInt64(uint64(id))
 			},
 		)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if !comparePolynomials(fromInts, fromList) {
 			t.Fatalf("polynomial constructors disagree")
@@ -539,7 +550,10 @@ func FuzzCommitmentVerification(f *testing.F) {
 
 		threshold, _ := fuzzThresholds(thresholdSeed, 0)
 		polynomial := makeFuzzPolynomial(g, threshold, secret, coeffs)
-		commitment := secretsharing.Commit(g, polynomial)
+		commitment, err := secretsharing.Commit(g, polynomial)
+		if err != nil {
+			t.Fatal(err)
+		}
 		id := uint16(idSeed%8) + 1
 
 		want := g.Base().Multiply(polynomial.Evaluate(g.NewScalar().SetUInt64(uint64(id))))
@@ -554,11 +568,9 @@ func FuzzCommitmentVerification(f *testing.F) {
 			t.Fatalf("valid public key did not verify")
 		}
 
-		share := &keys.PublicKeyShare{
-			PublicKey:     want,
-			VssCommitment: commitment,
-			ID:            id,
-			Group:         g,
+		share, err := keys.NewPublicKeyShare(g, id, want, commitment)
+		if err != nil {
+			t.Fatal(err)
 		}
 		if !secretsharing.VerifyPublicKeyShare(share) {
 			t.Fatalf("valid public key share did not verify")
@@ -580,7 +592,7 @@ func FuzzCommitmentVerification(f *testing.F) {
 	})
 }
 
-// FuzzRegistryOperations fuzzes registry insertion, lookup, and public-key verification behavior.
+// FuzzRegistryOperations fuzzes registry construction, lookup, and public-key verification behavior.
 func FuzzRegistryOperations(f *testing.F) {
 	for _, g := range groups {
 		f.Add(byte(g), byte(2), byte(3), byte(1), uint64(42), []byte{9, 10, 11})
@@ -604,32 +616,33 @@ func FuzzRegistryOperations(f *testing.F) {
 			t.Fatal(err)
 		}
 
-		registry := keys.NewPublicKeyShareRegistry(g, threshold, total)
-		for _, share := range shares {
-			if err = registry.Add(share.Public()); err != nil {
-				t.Fatal(err)
-			}
+		public := make([]*keys.PublicKeyShare, len(shares))
+		for i, share := range shares {
+			public[i] = share.PublicKeyShare()
 		}
-		registry.VerificationKey = shares[0].VerificationKey
+		registry, err := keys.NewPublicKeyShareRegistry(g, threshold, total, shares[0].VerificationKey(), public)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		index := int(lookupSeed) % len(shares)
-		share := shares[index].Public()
-		got := registry.Get(share.ID)
+		share := shares[index].PublicKeyShare()
+		got := registry.Get(share.Identifier())
 		if got == nil {
 			t.Fatalf("registered share was not found")
 		}
 		if err = comparePublicKeyShare(share, got, true); err != nil {
 			t.Fatal(err)
 		}
-		if err = registry.VerifyPublicKey(share.ID, share.PublicKey); err != nil {
+		if err = registry.ContainsPublicKey(share.Identifier(), share.PublicKey()); err != nil {
 			t.Fatal(err)
 		}
-		if err = registry.VerifyPublicKey(share.ID, nil); err == nil {
+		if err = registry.ContainsPublicKey(share.Identifier(), nil); err == nil {
 			t.Fatalf("nil public key was accepted")
 		}
 
-		wrong := share.PublicKey.Copy().Add(g.Base())
-		if err = registry.VerifyPublicKey(share.ID, wrong); err == nil {
+		wrong := share.PublicKey().Add(g.Base())
+		if err = registry.ContainsPublicKey(share.Identifier(), wrong); err == nil {
 			t.Fatalf("wrong public key was accepted")
 		}
 
@@ -637,17 +650,17 @@ func FuzzRegistryOperations(f *testing.F) {
 		if registry.Get(unknownID) != nil {
 			t.Fatalf("unknown identifier resolved to a share")
 		}
-		if err = registry.VerifyPublicKey(unknownID, share.PublicKey); err == nil {
+		if err = registry.ContainsPublicKey(unknownID, share.PublicKey()); err == nil {
 			t.Fatalf("unknown identifier verified")
 		}
-		if err = registry.Add(share); err == nil {
-			t.Fatalf("duplicate share was accepted")
-		}
-
-		extra := *share
-		extra.ID = unknownID
-		if err = registry.Add(&extra); err == nil {
-			t.Fatalf("registry accepted a share beyond capacity")
+		if _, err = keys.NewPublicKeyShareRegistry(
+			g,
+			threshold,
+			total,
+			shares[0].VerificationKey(),
+			append(public, share),
+		); err == nil {
+			t.Fatalf("registry constructor accepted a duplicate share")
 		}
 	})
 }

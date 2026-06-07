@@ -129,6 +129,8 @@ linters:
       check-blank: true
     funlen:
       lines: 70
+    gocognit:
+        min-complexity: 17
     gocritic:
       enable-all: true
     gosec:

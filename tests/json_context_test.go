@@ -75,13 +75,14 @@ func makeJSONTestMaterial(
 		t.Fatal(err)
 	}
 
-	registry := keys.NewPublicKeyShareRegistry(g, threshold, total)
-	for _, share := range shares {
-		if err = registry.Add(share.Public()); err != nil {
-			t.Fatal(err)
-		}
+	publicShares := make([]*keys.PublicKeyShare, len(shares))
+	for i, share := range shares {
+		publicShares[i] = share.PublicKeyShare()
 	}
-	registry.VerificationKey = shares[0].VerificationKey
+	registry, err := keys.NewPublicKeyShareRegistry(g, threshold, total, shares[0].VerificationKey(), publicShares)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return shares, registry
 }
@@ -91,7 +92,7 @@ func TestPublicKeyShareJSONDecode_Table(t *testing.T) {
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
 			shares, _ := makeJSONTestMaterial(t, g, 3, 4)
-			source := shares[0].Public()
+			source := shares[0].PublicKeyShare()
 			data := mustMarshalJSON(t, source)
 			other := otherAvailableGroup(g)
 
@@ -103,19 +104,19 @@ func TestPublicKeyShareJSONDecode_Table(t *testing.T) {
 			}{
 				{
 					name:     "invalid nonzero receiver group",
-					recv:     &keys.PublicKeyShare{Group: ecc.Group(255)},
+					recv:     keys.NewPublicKeyShareReceiver(ecc.Group(255)),
 					data:     data,
 					wantPref: "failed to decode PublicKeyShare: invalid group identifier",
 				},
 				{
 					name:     "wrong receiver group",
-					recv:     keys.NewPublicKeyShare(other),
+					recv:     keys.NewPublicKeyShareReceiver(other),
 					data:     data,
 					wantPref: "failed to decode PublicKeyShare: encoded group does not match receiver group",
 				},
 				{
 					name: "invalid top-level group",
-					recv: keys.NewPublicKeyShare(g),
+					recv: keys.NewPublicKeyShareReceiver(g),
 					data: mutateJSONObject(t, data, func(document map[string]any) {
 						document["group"] = 0
 					}),
@@ -140,7 +141,7 @@ func TestPublicKeyShareJSONDecode_Table(t *testing.T) {
 				},
 				{
 					name: "commitment is not an array",
-					recv: keys.NewPublicKeyShare(g),
+					recv: keys.NewPublicKeyShareReceiver(g),
 					data: mutateJSONObject(t, data, func(document map[string]any) {
 						document["vssCommitment"] = "nope"
 					}),
@@ -174,13 +175,13 @@ func TestKeyShareJSONDecode_Table(t *testing.T) {
 			}{
 				{
 					name:     "invalid nonzero receiver group",
-					recv:     &keys.KeyShare{PublicKeyShare: keys.PublicKeyShare{Group: ecc.Group(255)}},
+					recv:     keys.NewKeyShareReceiver(ecc.Group(255)),
 					data:     data,
 					wantPref: "failed to decode KeyShare: failed to decode PublicKeyShare: invalid group identifier",
 				},
 				{
 					name:     "wrong receiver group",
-					recv:     keys.NewKeyShare(other),
+					recv:     keys.NewKeyShareReceiver(other),
 					data:     data,
 					wantPref: "failed to decode KeyShare: failed to decode PublicKeyShare: encoded group does not match receiver group",
 				},
@@ -245,13 +246,13 @@ func TestRegistryJSONDecode_Table(t *testing.T) {
 			}{
 				{
 					name:     "invalid nonzero receiver group",
-					recv:     &keys.PublicKeyShareRegistry{Group: ecc.Group(255)},
+					recv:     keys.NewPublicKeyShareRegistryReceiver(ecc.Group(255)),
 					data:     data,
 					wantPref: "failed to decode PublicKeyShareRegistry: invalid group identifier",
 				},
 				{
 					name:     "wrong receiver group",
-					recv:     keys.NewEmptyPublicKeyShareRegistry(other),
+					recv:     keys.NewPublicKeyShareRegistryReceiver(other),
 					data:     data,
 					wantPref: "failed to decode PublicKeyShareRegistry: encoded group does not match receiver group",
 				},
@@ -273,7 +274,7 @@ func TestRegistryJSONDecode_Table(t *testing.T) {
 				},
 				{
 					name: "share count mismatch",
-					recv: keys.NewEmptyPublicKeyShareRegistry(g),
+					recv: keys.NewPublicKeyShareRegistryReceiver(g),
 					data: mutateJSONObject(t, data, func(document map[string]any) {
 						document["total"] = 4
 					}),
@@ -281,7 +282,7 @@ func TestRegistryJSONDecode_Table(t *testing.T) {
 				},
 				{
 					name: "map key share id mismatch",
-					recv: keys.NewEmptyPublicKeyShareRegistry(g),
+					recv: keys.NewPublicKeyShareRegistryReceiver(g),
 					data: mutateJSONObject(t, data, func(document map[string]any) {
 						shares := document["publicKeyShares"].(map[string]any)
 						share := shares["1"].(map[string]any)
@@ -291,7 +292,7 @@ func TestRegistryJSONDecode_Table(t *testing.T) {
 				},
 				{
 					name: "commitment length mismatch",
-					recv: keys.NewEmptyPublicKeyShareRegistry(g),
+					recv: keys.NewPublicKeyShareRegistryReceiver(g),
 					data: mutateJSONObject(t, data, func(document map[string]any) {
 						shares := document["publicKeyShares"].(map[string]any)
 						share := shares["1"].(map[string]any)
@@ -349,7 +350,7 @@ func TestJSONRoundTripProperties(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					pinned := keys.NewKeyShare(g)
+					pinned := keys.NewKeyShareReceiver(g)
 					if err := json.Unmarshal(data, pinned); err != nil {
 						t.Fatal(err)
 					}
@@ -358,36 +359,36 @@ func TestJSONRoundTripProperties(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					publicData := mustMarshalJSON(t, share.Public())
+					publicData := mustMarshalJSON(t, share.PublicKeyShare())
 					inferredPublic := new(keys.PublicKeyShare)
 					if err := json.Unmarshal(publicData, inferredPublic); err != nil {
 						t.Fatal(err)
 					}
-					if err := comparePublicKeyShare(share.Public(), inferredPublic, true); err != nil {
+					if err := comparePublicKeyShare(share.PublicKeyShare(), inferredPublic, true); err != nil {
 						t.Fatal(err)
 					}
 
-					pinnedPublic := keys.NewPublicKeyShare(g)
+					pinnedPublic := keys.NewPublicKeyShareReceiver(g)
 					if err := json.Unmarshal(publicData, pinnedPublic); err != nil {
 						t.Fatal(err)
 					}
-					if err := comparePublicKeyShare(share.Public(), pinnedPublic, true); err != nil {
+					if err := comparePublicKeyShare(share.PublicKeyShare(), pinnedPublic, true); err != nil {
 						t.Fatal(err)
 					}
 
-					if !secretsharing.VerifyPublicKeyShare(inferred.Public()) {
-						t.Fatalf("decoded public key share %d does not verify", inferred.ID)
+					if !secretsharing.VerifyPublicKeyShare(inferred.PublicKeyShare()) {
+						t.Fatalf("decoded public key share %d does not verify", inferred.Identifier())
 					}
 
 					decodedShares[i] = inferred
 				}
 
-				recovered, err := secretsharing.CombineShares(decodedShares[:param.threshold])
+				recovered, err := secretsharing.CombineShares(decodedShares[:param.threshold], param.threshold)
 				if err != nil {
 					t.Fatal(err)
 				}
 
-				expected, err := secretsharing.CombineShares(shares[:param.threshold])
+				expected, err := secretsharing.CombineShares(shares[:param.threshold], param.threshold)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -407,7 +408,7 @@ func TestJSONRoundTripProperties(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				pinnedRegistry := keys.NewEmptyPublicKeyShareRegistry(g)
+				pinnedRegistry := keys.NewPublicKeyShareRegistryReceiver(g)
 				if err = json.Unmarshal(data, pinnedRegistry); err != nil {
 					t.Fatal(err)
 				}
@@ -426,7 +427,7 @@ func TestJSONDecodeRejectsLegacyECCValues(t *testing.T) {
 		t.Run(g.String(), func(t *testing.T) {
 			shares, registry := makeJSONTestMaterial(t, g, 2, 3)
 
-			publicData := mustMarshalJSON(t, shares[0].Public())
+			publicData := mustMarshalJSON(t, shares[0].PublicKeyShare())
 			publicData = mutateJSONObject(t, publicData, func(document map[string]any) {
 				publicKey := document["publicKey"].(map[string]any)
 				document["publicKey"] = publicKey["data"]

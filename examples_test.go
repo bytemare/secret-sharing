@@ -42,7 +42,7 @@ func ExampleShard() {
 	}
 
 	// Combine the subset of shares.
-	recovered, err := secretsharing.CombineShares(subset)
+	recovered, err := secretsharing.CombineShares(subset, threshold)
 	if err != nil {
 		panic(err)
 	}
@@ -77,10 +77,10 @@ func ExampleVerify() {
 	// participant access to the participant's public key.
 	for _, keyshare := range shares {
 		// Let's get the public key. Other parties won't have access to the private key, naturally.
-		publicShare := keyshare.Public()
+		publicShare := keyshare.PublicKeyShare()
 
 		// Verify that the key share's public key is consistent with the commitment.
-		if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.VssCommitment) {
+		if !secretsharing.Verify(g, publicShare.Identifier(), publicShare.PublicKey(), publicShare.Commitment()) {
 			panic("invalid public key for shareholder")
 		}
 	}
@@ -107,13 +107,14 @@ func Example_jsonDecoding() {
 		panic(err)
 	}
 
-	registry := keys.NewPublicKeyShareRegistry(g, 2, 3)
+	publicShares := make([]*keys.PublicKeyShare, len(shares))
 	for _, share := range shares {
-		if err = registry.Add(share.Public()); err != nil {
-			panic(err)
-		}
+		publicShares[share.Identifier()-1] = share.PublicKeyShare()
 	}
-	registry.VerificationKey = shares[0].VerificationKey
+	registry, err := keys.NewPublicKeyShareRegistry(g, 2, 3, shares[0].VerificationKey(), publicShares)
+	if err != nil {
+		panic(err)
+	}
 
 	registryJSON, err := json.Marshal(registry)
 	if err != nil {
@@ -125,7 +126,8 @@ func Example_jsonDecoding() {
 		panic(err)
 	}
 
-	fmt.Println(decodedKeyShare.ID == shares[0].ID && decodedRegistry.Get(decodedKeyShare.ID) != nil)
+	fmt.Println(decodedKeyShare.Identifier() == shares[0].Identifier() &&
+		decodedRegistry.Get(decodedKeyShare.Identifier()) != nil)
 
 	// Output: true
 }

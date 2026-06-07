@@ -10,6 +10,7 @@ package secretsharing
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/bytemare/ecc"
 )
@@ -32,25 +33,48 @@ func NewPolynomial(coefficients uint16) Polynomial {
 	return make(Polynomial, coefficients)
 }
 
-// NewPolynomialFromIntegers returns a Polynomial from a slice of uint16.
-func NewPolynomialFromIntegers(g ecc.Group, ints []uint16) Polynomial {
+// NewPolynomialFromIntegers returns a Polynomial from a slice of uint16, or nil for an invalid group.
+func NewPolynomialFromIntegers(g ecc.Group, ints []uint16) (Polynomial, error) {
+	if !g.Available() {
+		return nil, errInvalidGroup
+	}
+
 	polynomial := make(Polynomial, len(ints))
 	for i, v := range ints {
 		polynomial[i] = g.NewScalar().SetUInt64(uint64(v))
 	}
 
-	return polynomial
+	return polynomial, nil
 }
 
-// NewPolynomialFromListFunc returns a Polynomial from the ecc.Scalar returned by f applied on each element
-// of the slice.
-func NewPolynomialFromListFunc[S ~[]E, E any](g ecc.Group, s S, f func(E) *ecc.Scalar) Polynomial {
-	polynomial := make(Polynomial, len(s))
-	for i, v := range s {
-		polynomial[i] = g.NewScalar().Set(f(v))
+// NewPolynomialFromListFunc returns a Polynomial from the ecc.Scalar returned by f applied on each element of the
+// slice, or nil for malformed input.
+func NewPolynomialFromListFunc[S ~[]E, E any](
+	g ecc.Group,
+	s S,
+	f func(E) *ecc.Scalar,
+) (polynomial Polynomial, err error) {
+	defer func() {
+		if recover() != nil {
+			polynomial = nil
+		}
+	}()
+
+	if !g.Available() || f == nil {
+		return nil, errInvalidGroup
 	}
 
-	return polynomial
+	polynomial = make(Polynomial, len(s))
+	for i, v := range s {
+		scalar := f(v)
+		if !scalarInGroup(scalar, g) {
+			return nil, fmt.Errorf("coefficient %d is not a valid scalar: %w", i, errInvalidGroup)
+		}
+
+		polynomial[i] = g.NewScalar().Set(scalar)
+	}
+
+	return polynomial, nil
 }
 
 // the only call to copyPolynomial ensure that both polynomials are of the same length.
@@ -72,8 +96,8 @@ func copyPolynomial(dst, src Polynomial) error {
 
 // Verify returns an appropriate error if the polynomial has a nil or 0 coefficient, or duplicates.
 func (p Polynomial) Verify() error {
-	if p.hasNil() {
-		return errPolyHasNilCoeff
+	if _, err := p.group(); err != nil {
+		return err
 	}
 
 	if p.hasZero() {
@@ -89,12 +113,30 @@ func (p Polynomial) Verify() error {
 
 // VerifyInterpolatingInput checks compatibility of the input id with the polynomial. If not, an error is returned.
 func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
-	if id == nil || id.IsZero() {
+	idGroup, ok := polynomialScalarGroup(id)
+	if id == nil {
+		return errPolyXIsZero
+	}
+
+	if !ok {
+		return errInvalidScalar
+	}
+
+	if id.IsZero() {
 		return errPolyXIsZero
 	}
 
 	if err := p.Verify(); err != nil {
 		return err
+	}
+
+	polynomialGroup, err := p.group()
+	if err != nil {
+		return err
+	}
+
+	if idGroup != polynomialGroup {
+		return errScalarGroup
 	}
 
 	if !p.has(id) {
@@ -104,10 +146,26 @@ func (p Polynomial) VerifyInterpolatingInput(id *ecc.Scalar) error {
 	return nil
 }
 
-// Evaluate evaluates the polynomial p at point x using Horner's method.
-func (p Polynomial) Evaluate(x *ecc.Scalar) *ecc.Scalar {
+// Evaluate evaluates the polynomial p at point x using Horner's method, or returns nil for malformed input.
+func (p Polynomial) Evaluate(x *ecc.Scalar) (value *ecc.Scalar) {
+	defer func() {
+		if recover() != nil {
+			value = nil
+		}
+	}()
+
+	xGroup, ok := polynomialScalarGroup(x)
+	if !ok {
+		return nil
+	}
+
+	polynomialGroup, err := p.group()
+	if err != nil || polynomialGroup != xGroup {
+		return nil
+	}
+
 	// since value is an accumulator and starts with 0, we can skip multiplying by x, and start from the end
-	value := p[len(p)-1].Copy()
+	value = p[len(p)-1].Copy()
 	for i := len(p) - 2; i >= 0; i-- {
 		value.Multiply(x)
 		value.Add(p[i])
@@ -118,9 +176,29 @@ func (p Polynomial) Evaluate(x *ecc.Scalar) *ecc.Scalar {
 
 // DeriveInterpolatingValue derives a value used for polynomial interpolation.
 // id and all the coefficients must be non-zero scalars.
-func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (*ecc.Scalar, error) {
-	if err := p.VerifyInterpolatingInput(id); err != nil {
+func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (value *ecc.Scalar, err error) {
+	defer func() {
+		if recover() != nil {
+			value = nil
+			err = errInvalidScalar
+		}
+	}()
+
+	if !g.Available() {
+		return nil, errInvalidGroup
+	}
+
+	if err = p.VerifyInterpolatingInput(id); err != nil {
 		return nil, err
+	}
+
+	polynomialGroup, err := p.group()
+	if err != nil {
+		return nil, err
+	}
+
+	if polynomialGroup != g {
+		return nil, errScalarGroup
 	}
 
 	numerator := g.NewScalar().One()
@@ -138,21 +216,54 @@ func (p Polynomial) DeriveInterpolatingValue(g ecc.Group, id *ecc.Scalar) (*ecc.
 	return numerator.Multiply(denominator.Invert()), nil
 }
 
+func polynomialScalarGroup(scalar *ecc.Scalar) (group ecc.Group, ok bool) {
+	if scalar == nil {
+		return 0, false
+	}
+
+	defer func() {
+		if recover() != nil {
+			group = 0
+			ok = false
+		}
+	}()
+
+	group = scalar.Group()
+
+	return group, group.Available()
+}
+
+func (p Polynomial) group() (ecc.Group, error) {
+	if len(p) == 0 {
+		return 0, errPolynomialEmpty
+	}
+
+	var group ecc.Group
+
+	for i, scalar := range p {
+		if scalar == nil {
+			return 0, errPolyHasNilCoeff
+		}
+
+		scalarGroup, ok := polynomialScalarGroup(scalar)
+		if !ok {
+			return 0, errInvalidScalar
+		}
+
+		if i == 0 {
+			group = scalarGroup
+		} else if scalarGroup != group {
+			return 0, errScalarGroup
+		}
+	}
+
+	return group, nil
+}
+
 // has returns whether s is a coefficient of the polynomial.
 func (p Polynomial) has(s *ecc.Scalar) bool {
 	for _, si := range p {
 		if si.Equal(s) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// has returns whether s is a coefficient of the polynomial.
-func (p Polynomial) hasNil() bool {
-	for _, si := range p {
-		if si == nil {
 			return true
 		}
 	}

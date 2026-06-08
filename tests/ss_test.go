@@ -32,8 +32,8 @@ var groups = []ecc.Group{
 	ecc.Secp256k1Sha256,
 }
 
-func testCombine(secret *ecc.Scalar, shares []*keys.KeyShare) (error, bool) {
-	recovered, err := secretsharing.CombineShares(shares)
+func testCombine(secret *ecc.Scalar, shares []*keys.KeyShare, threshold uint16) (error, bool) {
+	recovered, err := secretsharing.CombineShares(shares, threshold)
 	if err != nil {
 		return err, false
 	}
@@ -43,6 +43,45 @@ func testCombine(secret *ecc.Scalar, shares []*keys.KeyShare) (error, bool) {
 	}
 
 	return nil, true
+}
+
+func expectErrorIs(t testing.TB, err, target error) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatalf("expected error matching %q", target)
+	}
+
+	if !errors.Is(err, target) {
+		t.Fatalf("expected %q to match %q", err, target)
+	}
+
+	if wrapped := fmt.Errorf("downstream context: %w", err); !errors.Is(wrapped, target) {
+		t.Fatalf("expected wrapped %q to match %q", wrapped, target)
+	}
+}
+
+func TestSecretSharingErrorTaxonomySentinels(t *testing.T) {
+	for _, target := range []error{
+		secretsharing.ErrTooFewShares,
+		secretsharing.ErrMalformedCryptoInput,
+		secretsharing.ErrInvalidRegistry,
+		secretsharing.ErrInvalidMaterial,
+		secretsharing.ErrUnknownShare,
+	} {
+		expectErrorIs(t, target, target)
+	}
+}
+
+func TestKeysErrorTaxonomySentinels(t *testing.T) {
+	for _, target := range []error{
+		keys.ErrEncodingFailure,
+		keys.ErrInvalidRegistry,
+		keys.ErrInvalidMaterial,
+		keys.ErrUnknownShare,
+	} {
+		expectErrorIs(t, target, target)
+	}
 }
 
 func TestSecretSharing(t *testing.T) {
@@ -63,17 +102,17 @@ func TestSecretSharing(t *testing.T) {
 			}
 
 			// it must not succeed with fewer than threshold shares
-			if err, _ = testCombine(secret, shares[:threshold-1]); err == nil {
+			if err, _ = testCombine(secret, shares[:threshold-1], threshold); err == nil {
 				t.Fatal("expected error on too few shares")
 			}
 
 			// it must succeed with threshold shares
-			if err, _ = testCombine(secret, shares[:threshold]); err != nil {
+			if err, _ = testCombine(secret, shares[:threshold], threshold); err != nil {
 				t.Fatalf("unexpected error on threshold number of shares: %v", err)
 			}
 
 			// it must succeed with more than threshold shares
-			if err, _ = testCombine(secret, shares[:maxParticipants]); err != nil {
+			if err, _ = testCombine(secret, shares[:maxParticipants], threshold); err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
 		})
@@ -87,22 +126,27 @@ func TestNewPolynomial_Ints(t *testing.T) {
 		t.Run(g.String(), func(tt *testing.T) {
 			pRef := secretsharing.NewPolynomial(maxParticipants)
 			ints := make([]uint16, maxParticipants)
-			shares := make([]*keys.KeyShare, maxParticipants)
 			for i := range maxParticipants {
 				id := i + 1
 				pRef[i] = g.NewScalar().SetUInt64(uint64(id))
 				ints[i] = id
-				shares[i] = &keys.KeyShare{PublicKeyShare: keys.PublicKeyShare{ID: id}}
 			}
 
-			pInts := secretsharing.NewPolynomialFromIntegers(g, ints)
-			pShares := secretsharing.NewPolynomialFromListFunc(
+			pInts, err := secretsharing.NewPolynomialFromIntegers(g, ints)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			pShares, err := secretsharing.NewPolynomialFromListFunc(
 				g,
-				shares,
-				func(share *keys.KeyShare) *ecc.Scalar {
-					return g.NewScalar().SetUInt64(uint64(share.ID))
+				ints,
+				func(id uint16) *ecc.Scalar {
+					return g.NewScalar().SetUInt64(uint64(id))
 				},
 			)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			for i := range maxParticipants {
 				if !pRef[i].Equal(pInts[i]) || !pRef[i].Equal(pShares[i]) {
@@ -171,7 +215,8 @@ func TestShardings(t *testing.T) {
 				secret,
 				threshold,
 				maxParticipants,
-				polynomial...)
+				polynomial...,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +246,8 @@ func TestShardings(t *testing.T) {
 				secret,
 				threshold,
 				maxParticipants,
-				polynomial...)
+				polynomial...,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -243,24 +289,24 @@ func TestCommitment(t *testing.T) {
 			}
 
 			for _, keyshare := range shares {
-				pk := g.Base().Multiply(keyshare.Secret)
+				pk := g.Base().Multiply(keyshare.SecretKey())
 
-				pubkey := keyshare.Public()
-				if !pk.Equal(pubkey.PublicKey) {
+				pubkey := keyshare.PublicKeyShare()
+				if !pk.Equal(pubkey.PublicKey()) {
 					t.Fatal("expected equality")
 				}
 
-				_, err = secretsharing.PubKeyForCommitment(pubkey.Group, pubkey.ID, pubkey.VssCommitment)
+				_, err = secretsharing.PubKeyForCommitment(pubkey.Group(), pubkey.Identifier(), pubkey.Commitment())
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				if !secretsharing.VerifyPublicKeyShare(pubkey) {
-					t.Fatalf("invalid public key for shareholder %d", pubkey.ID)
+					t.Fatalf("invalid public key for shareholder %d", pubkey.Identifier())
 				}
 
-				if !secretsharing.Verify(g, pubkey.ID, pk, pubkey.VssCommitment) {
-					t.Fatalf("invalid public key for shareholder %d", pubkey.ID)
+				if !secretsharing.Verify(g, pubkey.Identifier(), pk, pubkey.Commitment()) {
+					t.Fatalf("invalid public key for shareholder %d", pubkey.Identifier())
 				}
 			}
 
@@ -269,8 +315,8 @@ func TestCommitment(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			k := keys.KeyShare{}
-			if err := json.Unmarshal(b, &k); err != nil {
+			k := keys.NewKeyShareReceiver(g)
+			if err := json.Unmarshal(b, k); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -290,15 +336,10 @@ func TestVerify_BadShares(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// Alter the shares
-			for _, share := range shares {
-				share.Secret.Random()
-			}
-
 			// Verify
 			for _, share := range shares {
-				pk := g.Base().Multiply(share.Secret)
-				if secretsharing.Verify(g, share.ID, pk, share.VssCommitment) {
+				pk := g.Base().Multiply(g.NewScalar().Random())
+				if secretsharing.Verify(g, share.Identifier(), pk, share.PublicKeyShare().Commitment()) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
 			}
@@ -319,7 +360,10 @@ func TestVerify_BadCommitments(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			commitments := secretsharing.Commit(g, polynomial)
+			commitments, err := secretsharing.Commit(g, polynomial)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// Alter the commitments
 			for _, com := range commitments {
@@ -328,8 +372,8 @@ func TestVerify_BadCommitments(t *testing.T) {
 
 			// Verify
 			for _, share := range shares {
-				pk := g.Base().Multiply(share.Secret)
-				if secretsharing.Verify(g, share.ID, pk, commitments) {
+				pk := g.Base().Multiply(share.SecretKey())
+				if secretsharing.Verify(g, share.Identifier(), pk, commitments) {
 					t.Fatalf("verification succeeded but shouldn't")
 				}
 			}
@@ -373,16 +417,22 @@ func TestShard_LowShares(t *testing.T) {
 			if _, err := secretsharing.Shard(g, secret, threshold, maxParticipants); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
 			}
 
 			if _, err := secretsharing.ShardAndCommit(g, secret, threshold, maxParticipants); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
 			}
 
 			if _, _, err := secretsharing.ShardReturnPolynomial(g, secret, threshold, maxParticipants); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
 			}
 		})
 	}
@@ -401,7 +451,10 @@ func testBadPolynomial(g ecc.Group, threshold, max uint16, p secretsharing.Polyn
 		return err
 	}
 
-	commitments := secretsharing.Commit(g, polynomial)
+	commitments, err := secretsharing.Commit(g, polynomial)
+	if err != nil {
+		return err
+	}
 
 	// Alter the commitments
 	for _, com := range commitments {
@@ -410,8 +463,8 @@ func testBadPolynomial(g ecc.Group, threshold, max uint16, p secretsharing.Polyn
 
 	// Verify
 	for id, share := range shares {
-		pk := g.Base().Multiply(share.Secret)
-		if secretsharing.Verify(g, share.ID, pk, commitments) {
+		pk := g.Base().Multiply(share.SecretKey())
+		if secretsharing.Verify(g, share.Identifier(), pk, commitments) {
 			return fmt.Errorf("verification of %d failed", id)
 		}
 	}
@@ -465,25 +518,89 @@ func TestBadPolynomial_NilCoeff(t *testing.T) {
 	}
 }
 
-func TestBadPolynomial_ZeroCoeff(t *testing.T) {
+func TestSecretSharing_WithZeroNonLeadingPolynomialCoefficient(t *testing.T) {
+	threshold := uint16(3)
+	maxParticipants := uint16(5)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			secret := g.NewScalar().SetUInt64(11)
+			polynomial := secretsharing.Polynomial{
+				secret,
+				g.NewScalar().Zero(),
+				g.NewScalar().SetUInt64(7),
+			}
+
+			shares, returned, err := secretsharing.ShardReturnPolynomial(
+				g,
+				secret,
+				threshold,
+				maxParticipants,
+				polynomial...,
+			)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !returned[1].IsZero() {
+				t.Fatal("expected returned polynomial to preserve zero non-leading coefficient")
+			}
+
+			recovered, err := secretsharing.CombineShares(shares[:threshold], threshold)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !recovered.Equal(secret) {
+				t.Fatal("recovered secret does not match")
+			}
+		})
+	}
+}
+
+func TestBadPolynomial_ZeroSecretCoefficient(t *testing.T) {
+	threshold := uint16(3)
+	maxParticipants := uint16(5)
+	expected := "the provided secret is zero"
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			polyZeroSecret := secretsharing.Polynomial{
+				g.NewScalar().Zero(),
+				g.NewScalar().SetUInt64(3),
+				g.NewScalar().SetUInt64(7),
+			}
+
+			if err := testBadPolynomial(g, threshold, maxParticipants, polyZeroSecret, nil); err == nil ||
+				err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+			}
+		})
+	}
+}
+
+func TestBadPolynomial_ZeroLeadingCoefficient(t *testing.T) {
 	threshold := uint16(3)
 	maxParticipants := uint16(5)
 	expected := "one of the polynomial's coefficients is zero"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			// Test polynomial with a zero coefficient
-			polyZeroCoeff := make(secretsharing.Polynomial, threshold)
-			polyZeroCoeff[0] = g.NewScalar().Random()
-			polyZeroCoeff[1] = g.NewScalar().Zero()
-			polyZeroCoeff[2] = g.NewScalar().Random()
+			secret := g.NewScalar().SetUInt64(11)
+			polyZeroLeading := secretsharing.Polynomial{
+				secret,
+				g.NewScalar().SetUInt64(3),
+				g.NewScalar().Zero(),
+			}
 
-			t.Run(g.String(), func(tt *testing.T) {
-				if err := testBadPolynomial(g, threshold, maxParticipants, polyZeroCoeff, polyZeroCoeff[0]); err != nil &&
-					err.Error() != expected {
-					t.Fatalf("expected error %q, got %q", expected, err)
-				}
-			})
+			if err := testBadPolynomial(g, threshold, maxParticipants, polyZeroLeading, secret); err == nil ||
+				err.Error() != expected {
+				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+			}
 		})
 	}
 }
@@ -521,20 +638,119 @@ func TestBadPolynomial_WrongSize(t *testing.T) {
 }
 
 func TestCombine_TooFewShares(t *testing.T) {
-	// threshold := uint16(2)
 	expected := "no shares provided"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
 			// Nil shares
-			if _, err := secretsharing.CombineShares(nil); err == nil || err.Error() != expected {
+			if _, err := secretsharing.CombineShares(nil, 1); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
 			}
 
 			// Zero shares
 			var shares []*keys.KeyShare
-			if _, err := secretsharing.CombineShares(shares); err == nil || err.Error() != expected {
+			if _, err := secretsharing.CombineShares(shares, 1); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
+			}
+		})
+	}
+}
+
+func TestCombine_RequiresThresholdShares(t *testing.T) {
+	const threshold = uint16(2)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			shares, err := secretsharing.Shard(g, g.NewScalar().Random(), threshold, threshold)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err = secretsharing.CombineShares(shares[:threshold-1], threshold); err == nil {
+				t.Fatal("expected too-few-shares error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
+			}
+
+			if _, err = secretsharing.CombineShares(shares, 0); err == nil {
+				t.Fatal("expected zero-threshold error")
+			}
+		})
+	}
+}
+
+func TestCombineVerifiedShares(t *testing.T) {
+	const (
+		threshold = uint16(2)
+		total     = uint16(3)
+	)
+
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			secret := g.NewScalar().Random()
+			shares, err := secretsharing.ShardAndCommit(g, secret, threshold, total)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			registry := makeRegistry(t, g, threshold, total, shares)
+
+			recovered, err := secretsharing.CombineVerifiedShares(registry, shares[:threshold])
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !recovered.Equal(secret) {
+				t.Fatal("recovered secret does not match")
+			}
+
+			if _, err = secretsharing.CombineVerifiedShares(registry, shares[:threshold-1]); err == nil {
+				t.Fatal("expected too-few-shares error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrTooFewShares)
+			}
+
+			badShares, shardErr := secretsharing.ShardAndCommit(g, g.NewScalar().Random(), threshold, total)
+			if shardErr != nil {
+				t.Fatal(shardErr)
+			}
+			if _, err = secretsharing.CombineVerifiedShares(registry, []*keys.KeyShare{badShares[0], shares[1]}); err == nil {
+				t.Fatal("expected invalid-share error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+			}
+
+			if _, err = secretsharing.CombineVerifiedShares(nil, shares[:threshold]); err == nil {
+				t.Fatal("expected nil-registry error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidRegistry)
+			}
+
+			if _, err = secretsharing.CombineVerifiedShares(
+				keys.NewPublicKeyShareRegistryReceiver(g),
+				shares[:threshold],
+			); err == nil {
+				t.Fatal("expected invalid-registry error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidRegistry)
+				expectErrorIs(t, err, keys.ErrInvalidRegistry)
+				if !strings.Contains(err.Error(), "invalid total or threshold") {
+					t.Fatalf("expected wrapped registry detail, got %q", err)
+				}
+			}
+
+			smallerRegistry := makeRegistry(t, g, threshold, threshold, shares[:threshold])
+			if _, err = secretsharing.CombineVerifiedShares(
+				smallerRegistry,
+				[]*keys.KeyShare{shares[0], shares[2]},
+			); err == nil {
+				t.Fatal("expected unknown-share error")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrUnknownShare)
 			}
 		})
 	}
@@ -545,15 +761,12 @@ func TestCombine_BadIdentifiers_NilZero_1(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []*keys.KeyShare{
-				{
-					Secret:         nil,
-					PublicKeyShare: keys.PublicKeyShare{ID: 0, Group: g},
-				},
-			}
-			if _, err := secretsharing.CombineShares(badShare); err == nil ||
+			badShare := []*keys.KeyShare{new(keys.KeyShare)}
+			if _, err := secretsharing.CombineShares(badShare, 1); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
@@ -567,29 +780,28 @@ func TestCombine_BadIdentifiers_Nil(t *testing.T) {
 			xCoords := secretsharing.Polynomial{g.NewScalar().SetUInt64(1), nil}
 			if _, err := xCoords.DeriveInterpolatingValue(g, xCoords[0]); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
 }
 
 func TestCombine_BadIdentifiers_Zero(t *testing.T) {
-	expected := "one of the polynomial's coefficients is zero"
+	expected := "identifier for interpolation is nil or zero"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []*keys.KeyShare{
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
-				},
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 0, Group: g},
-				},
+			shares, err := secretsharing.Shard(g, g.NewScalar().Random(), 1, 1)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if _, err := secretsharing.CombineShares(badShare); err == nil ||
+			badShare := []*keys.KeyShare{shares[0], new(keys.KeyShare)}
+			if _, err := secretsharing.CombineShares(badShare, 2); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
@@ -600,19 +812,55 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []*keys.KeyShare{
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
-				},
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
-				},
+			shares, err := secretsharing.Shard(g, g.NewScalar().Random(), 1, 1)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if _, err := secretsharing.CombineShares(badShare); err == nil ||
+			badShare := []*keys.KeyShare{shares[0], shares[0]}
+			if _, err := secretsharing.CombineShares(badShare, 2); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+			}
+		})
+	}
+}
+
+func TestPolynomialVerifySeparatesCoefficientAndInterpolationIDRules(t *testing.T) {
+	for _, g := range groups {
+		t.Run(g.String(), func(t *testing.T) {
+			coefficients := secretsharing.Polynomial{
+				g.NewScalar().SetUInt64(11),
+				g.NewScalar().Zero(),
+				g.NewScalar().Zero(),
+			}
+
+			if err := coefficients.Verify(); err != nil {
+				t.Fatalf("zero and repeated coefficients should verify: %v", err)
+			}
+
+			if err := coefficients.VerifyInterpolationIDs(); err == nil {
+				t.Fatal("zero interpolation identifier verified")
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+			}
+
+			duplicateIDs := secretsharing.Polynomial{
+				g.NewScalar().SetUInt64(1),
+				g.NewScalar().SetUInt64(2),
+				g.NewScalar().SetUInt64(2),
+			}
+
+			if err := duplicateIDs.Verify(); err != nil {
+				t.Fatalf("repeated coefficients should verify: %v", err)
+			}
+
+			if err := duplicateIDs.VerifyInterpolationIDs(); err == nil ||
+				err.Error() != "the polynomial has duplicate coefficients" {
+				t.Fatalf("expected duplicate interpolation identifier error, got %q", err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
@@ -621,21 +869,23 @@ func TestCombine_BadIdentifiers_Duplicates(t *testing.T) {
 func TestCombine_WrongGroup(t *testing.T) {
 	expected := "incompatible EC groups found in set of key shares"
 
-	for _, g := range groups {
+	for i, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			badShare := []*keys.KeyShare{
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 1, Group: g},
-				},
-				{
-					Secret:         g.NewScalar().Random(),
-					PublicKeyShare: keys.PublicKeyShare{ID: 2, Group: g + 1},
-				},
+			left, err := secretsharing.Shard(g, g.NewScalar().Random(), 1, 1)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if _, err := secretsharing.CombineShares(badShare); err == nil ||
+			other := groups[(i+1)%len(groups)]
+			right, err := secretsharing.Shard(other, other.NewScalar().Random(), 1, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			badShare := []*keys.KeyShare{left[0], right[1]}
+			if _, err := secretsharing.CombineShares(badShare, 2); err == nil ||
 				err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
@@ -646,15 +896,17 @@ func TestVerifyInterpolatingInput_NotMember(t *testing.T) {
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
-			_, poly, err := secretsharing.ShardReturnPolynomial(g, nil, 3, 5)
+			xCoords, err := secretsharing.NewPolynomialFromIntegers(g, []uint16{1, 2, 3})
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			badID := g.NewScalar().SetUInt64(6)
 
-			if err = poly.VerifyInterpolatingInput(badID); err == nil || err.Error() != expected {
+			if err = xCoords.VerifyInterpolatingInput(badID); err == nil || err.Error() != expected {
 				t.Fatalf("expected error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
 			}
 		})
 	}
@@ -675,19 +927,23 @@ func TestPubKeyForCommitment(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			publicShare := shares[0].Public()
+			publicShare := shares[0].PublicKeyShare()
 
 			// No expected error
-			pk, err := secretsharing.PubKeyForCommitment(g, publicShare.ID, publicShare.VssCommitment)
+			pk, err := secretsharing.PubKeyForCommitment(g, publicShare.Identifier(), publicShare.Commitment())
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if !pk.Equal(publicShare.PublicKey) {
-				t.Fatalf("unexpected public key:\n\twant: %v\n\tgot : %v\n", shares[0].PublicKey.Hex(), pk.Hex())
+			if !pk.Equal(publicShare.PublicKey()) {
+				t.Fatalf(
+					"unexpected public key:\n\twant: %v\n\tgot : %v\n",
+					shares[0].PublicKeyShare().PublicKey().Hex(),
+					pk.Hex(),
+				)
 			}
 
-			if !secretsharing.Verify(g, publicShare.ID, publicShare.PublicKey, publicShare.VssCommitment) {
+			if !secretsharing.Verify(g, publicShare.Identifier(), publicShare.PublicKey(), publicShare.Commitment()) {
 				t.Fatal("unexpected public key")
 			}
 		})
@@ -707,22 +963,25 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 				panic(err)
 			}
 
-			commitment := secretsharing.Commit(g, polynomial)
+			commitment, err := secretsharing.Commit(g, polynomial)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// No commitment provided
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, nil); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].Identifier(), nil); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
 
 			// Provided commitment is empty
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*ecc.Element{}); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].Identifier(), []*ecc.Element{}); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
 
 			// First element of commitment is nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, []*ecc.Element{nil}); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].Identifier(), []*ecc.Element{nil}); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -730,7 +989,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			// Second element of commitment is nil and id = 1
 			c := commitment[1].Copy()
 			commitment[1] = nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].ID, commitment); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[0].Identifier(), commitment); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -739,7 +998,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			// Second element of commitment is nil
 			c = commitment[1].Copy()
 			commitment[1] = nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].Identifier(), commitment); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -748,7 +1007,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			// Third element of the commitment is nil
 			c = commitment[2].Copy()
 			commitment[2] = nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].Identifier(), commitment); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -757,7 +1016,7 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 			// Some other element of the commitment is nil
 			c = commitment[4].Copy()
 			commitment[4] = nil
-			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].ID, commitment); err == nil ||
+			if _, err = secretsharing.PubKeyForCommitment(g, shares[1].Identifier(), commitment); err == nil ||
 				err.Error() != errCommitmentNilElement.Error() {
 				t.Fatalf("expected error %q, got %q", errCommitmentNilElement, err)
 			}
@@ -765,35 +1024,171 @@ func TestPubKeyForCommitment_Bad_CommitmentNilElement(t *testing.T) {
 	}
 }
 
+func TestMalformedCryptoBoundariesFailClosed(t *testing.T) {
+	g := ecc.Ristretto255Sha512
+	other := ecc.P256Sha256
+	polynomial := secretsharing.Polynomial{g.NewScalar().Random()}
+	malformedPolynomial := secretsharing.Polynomial{new(ecc.Scalar)}
+	commitment := []*ecc.Element{g.Base()}
+
+	if _, err := secretsharing.Shard(0, nil, 1, 1); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, err := secretsharing.ShardAndCommit(0, nil, 1, 1); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, _, err := secretsharing.ShardReturnPolynomial(0, nil, 1, 1); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, _, err := secretsharing.ShardAndCommitAndReturnPolynomial(0, nil, 1, 1); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, err := secretsharing.Commit(0, polynomial); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, err := secretsharing.Commit(g, nil); err == nil {
+		t.Fatal("expected empty-polynomial error")
+	}
+
+	if _, err := secretsharing.Commit(g, secretsharing.Polynomial{nil}); err == nil {
+		t.Fatal("expected nil-coefficient error")
+	}
+
+	if _, err := secretsharing.Commit(g, secretsharing.Polynomial{new(ecc.Scalar)}); err == nil {
+		t.Fatal("expected malformed-scalar error")
+	}
+
+	if got, err := secretsharing.NewPolynomialFromIntegers(0, []uint16{1}); got != nil || err == nil {
+		t.Fatal("invalid group produced a polynomial")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if got, err := secretsharing.NewPolynomialFromListFunc(0, []uint16{1}, func(uint16) *ecc.Scalar {
+		return g.NewScalar().One()
+	}); got != nil || err == nil {
+		t.Fatal("invalid group produced a callback polynomial")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if got, err := secretsharing.NewPolynomialFromListFunc(g, []uint16{1}, func(uint16) *ecc.Scalar {
+		return nil
+	}); got != nil || err == nil {
+		t.Fatal("nil callback scalar produced a polynomial")
+	}
+
+	if err := (secretsharing.Polynomial{}).Verify(); err == nil {
+		t.Fatal("empty polynomial verified")
+	}
+
+	if err := malformedPolynomial.Verify(); err == nil {
+		t.Fatal("malformed polynomial verified")
+	}
+
+	if got := (secretsharing.Polynomial{}).Evaluate(g.NewScalar().One()); got != nil {
+		t.Fatal("empty polynomial evaluated")
+	}
+
+	if got := polynomial.Evaluate(nil); got != nil {
+		t.Fatal("polynomial evaluated a nil scalar")
+	}
+
+	if got := polynomial.Evaluate(other.NewScalar().One()); got != nil {
+		t.Fatal("polynomial evaluated a cross-group scalar")
+	}
+
+	if err := polynomial.VerifyInterpolatingInput(new(ecc.Scalar)); err == nil {
+		t.Fatal("malformed interpolation identifier verified")
+	}
+
+	if _, err := polynomial.DeriveInterpolatingValue(0, g.NewScalar().One()); err == nil {
+		t.Fatal("invalid group derived an interpolation value")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, err := malformedPolynomial.DeriveInterpolatingValue(g, g.NewScalar().One()); err == nil {
+		t.Fatal("malformed polynomial derived an interpolation value")
+	}
+
+	if _, err := secretsharing.PubKeyForCommitment(0, 1, commitment); err == nil {
+		t.Fatal("expected invalid-group error")
+	} else {
+		expectErrorIs(t, err, secretsharing.ErrInvalidMaterial)
+	}
+
+	if _, err := secretsharing.PubKeyForCommitment(g, 0, commitment); err == nil {
+		t.Fatal("expected zero-identifier error")
+	}
+
+	if _, err := secretsharing.PubKeyForCommitment(g, 1, []*ecc.Element{other.Base()}); err == nil {
+		t.Fatal("expected cross-group commitment error")
+	}
+
+	if secretsharing.Verify(g, 1, nil, commitment) {
+		t.Fatal("nil public key verified")
+	}
+
+	if secretsharing.Verify(g, 1, new(ecc.Element), commitment) {
+		t.Fatal("malformed public key verified")
+	}
+
+	if secretsharing.VerifyPublicKeyShare(nil) {
+		t.Fatal("nil public key share verified")
+	}
+
+	if _, err := secretsharing.CombineShares([]*keys.KeyShare{nil}, 1); err == nil {
+		t.Fatal("expected nil-share error")
+	}
+}
+
 func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare, compareCommitments bool) error {
-	if !s1.PublicKey.Equal(s2.PublicKey) {
-		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey.Hex(), s2.PublicKey.Hex())
+	if !s1.PublicKey().Equal(s2.PublicKey()) {
+		return fmt.Errorf("Expected equality on PublicKey:\n\t%s\n\t%s\n", s1.PublicKey().Hex(), s2.PublicKey().Hex())
 	}
 
-	if s1.ID != s2.ID {
-		return fmt.Errorf("Expected equality on ID:\n\t%d\n\t%d\n", s1.ID, s2.ID)
+	if s1.Identifier() != s2.Identifier() {
+		return fmt.Errorf("Expected equality on ID:\n\t%d\n\t%d\n", s1.Identifier(), s2.Identifier())
 	}
 
-	if s1.Group != s2.Group {
-		return fmt.Errorf("Expected equality on Group:\n\t%v\n\t%v\n", s1.Group, s2.Group)
+	if s1.Group() != s2.Group() {
+		return fmt.Errorf("Expected equality on Group:\n\t%v\n\t%v\n", s1.Group(), s2.Group())
 	}
 
 	if compareCommitments {
-		if len(s1.VssCommitment) != len(s2.VssCommitment) {
+		left := s1.Commitment()
+		right := s2.Commitment()
+		if len(left) != len(right) {
 			return fmt.Errorf(
 				"Expected equality on VssCommitment length:\n\t%d\n\t%d\n",
-				len(s1.VssCommitment),
-				len(s2.VssCommitment),
+				len(left),
+				len(right),
 			)
 		}
 
-		for i := range s1.VssCommitment {
-			if !s1.VssCommitment[i].Equal(s2.VssCommitment[i]) {
+		for i := range left {
+			if !left[i].Equal(right[i]) {
 				return fmt.Errorf(
 					"Expected equality on VssCommitment %d:\n\t%s\n\t%s\n",
 					i,
-					s1.VssCommitment[i].Hex(),
-					s2.VssCommitment[i].Hex(),
+					left[i].Hex(),
+					right[i].Hex(),
 				)
 			}
 		}
@@ -803,19 +1198,19 @@ func comparePublicKeyShare(s1, s2 *keys.PublicKeyShare, compareCommitments bool)
 }
 
 func compareKeyShares(s1, s2 *keys.KeyShare, compareCommitments bool) error {
-	if !s1.Secret.Equal(s2.Secret) {
-		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.Secret.Hex(), s2.Secret.Hex())
+	if !s1.SecretKey().Equal(s2.SecretKey()) {
+		return fmt.Errorf("Expected equality on Secret:\n\t%s\n\t%s\n", s1.SecretKey().Hex(), s2.SecretKey().Hex())
 	}
 
-	if !s1.VerificationKey.Equal(s2.VerificationKey) {
+	if !s1.VerificationKey().Equal(s2.VerificationKey()) {
 		return fmt.Errorf(
 			"Expected equality on VerificationKey:\n\t%s\n\t%s\n",
-			s1.VerificationKey.Hex(),
-			s2.VerificationKey.Hex(),
+			s1.VerificationKey().Hex(),
+			s2.VerificationKey().Hex(),
 		)
 	}
 
-	return comparePublicKeyShare(&s1.PublicKeyShare, &s2.PublicKeyShare, compareCommitments)
+	return comparePublicKeyShare(s1.PublicKeyShare(), s2.PublicKeyShare(), compareCommitments)
 }
 
 func TestEncoding_Bytes(t *testing.T) {
@@ -834,14 +1229,14 @@ func TestEncoding_Bytes(t *testing.T) {
 			}
 
 			// PublicKeyShare
-			b := shares[0].Public().Encode()
+			b := shares[0].PublicKeyShare().Encode()
 
 			decodedPKS := &keys.PublicKeyShare{}
 			if err = decodedPKS.Decode(b); err != nil {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
+			if err = comparePublicKeyShare(shares[0].PublicKeyShare(), decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -889,14 +1284,14 @@ func TestEncoding_Hex(t *testing.T) {
 			}
 
 			// PublicKeyShare
-			h := shares[0].Public().Hex()
+			h := shares[0].PublicKeyShare().Hex()
 
 			decodedPKS := new(keys.PublicKeyShare)
 			if err = decodedPKS.DecodeHex(h); err != nil {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
+			if err = comparePublicKeyShare(shares[0].PublicKeyShare(), decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -944,17 +1339,17 @@ func TestEncoding_JSON(t *testing.T) {
 			}
 
 			// PublicKeyShare
-			j, err := json.Marshal(shares[0].PublicKeyShare)
+			j, err := json.Marshal(shares[0].PublicKeyShare())
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			decodedPKS := &keys.PublicKeyShare{}
+			decodedPKS := new(keys.PublicKeyShare)
 			if err = json.Unmarshal(j, decodedPKS); err != nil {
 				t.Fatal(err)
 			}
 
-			if err = comparePublicKeyShare(&shares[0].PublicKeyShare, decodedPKS, true); err != nil {
+			if err = comparePublicKeyShare(shares[0].PublicKeyShare(), decodedPKS, true); err != nil {
 				t.Fatal(err)
 			}
 
@@ -964,7 +1359,7 @@ func TestEncoding_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			decodedKS := &keys.KeyShare{}
+			decodedKS := new(keys.KeyShare)
 			if err = json.Unmarshal(j, decodedKS); err != nil {
 				t.Fatal(err)
 			}
@@ -1001,29 +1396,47 @@ type serde interface {
 }
 
 func testDecodeError(t *testing.T, encoded []byte, s serde, expectedError string) {
+	t.Helper()
+
 	if err := s.Decode(encoded); err == nil || err.Error() != expectedError {
 		t.Fatalf("expected error %q, got %q", expectedError, err)
+	} else {
+		expectErrorIs(t, err, keys.ErrEncodingFailure)
 	}
 }
 
 func testDecodeErrorPrefix(t *testing.T, s serde, data []byte, expectedPrefix string) {
+	t.Helper()
+
 	if err := s.Decode(data); err == nil ||
 		!strings.HasPrefix(err.Error(), expectedPrefix) {
 		t.Fatalf("expected error %q, got %q", expectedPrefix, err)
+	} else {
+		expectErrorIs(t, err, keys.ErrEncodingFailure)
 	}
 }
 
 func testUnmarshalJSONError(t *testing.T, s serde, data []byte, expectedError string) {
+	t.Helper()
+
 	if err := json.Unmarshal(data, s); err == nil || err.Error() != expectedError {
 		t.Fatalf("expected error %q, got %q", expectedError, err)
+	} else {
+		expectErrorIs(t, err, keys.ErrEncodingFailure)
 	}
 }
 
 func testUnmarshalJSONErrorPrefix(t *testing.T, s serde, data []byte, expectedPrefix string) {
+	t.Helper()
+
 	err := json.Unmarshal(data, s)
 	if err == nil ||
 		!strings.HasPrefix(err.Error(), expectedPrefix) {
 		t.Fatalf("expected error %q, got %q", expectedPrefix, err)
+	}
+
+	if strings.HasPrefix(err.Error(), "failed to decode") {
+		expectErrorIs(t, err, keys.ErrEncodingFailure)
 	}
 }
 
@@ -1086,7 +1499,6 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 
 	errEncodingInvalidLength := "failed to decode PublicKeyShare: invalid encoding length"
 	errEncodingInvalidGroup := "failed to decode PublicKeyShare: invalid group identifier"
-	errEncodingInvalidJSONEncoding := "failed to decode PublicKeyShare: invalid JSON encoding"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1103,7 +1515,7 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			testDecodeError(t, nil, decoded, errEncodingInvalidLength)
 
 			// Decode: bad group
-			encoded := shares[0].Public().Encode()
+			encoded := shares[0].PublicKeyShare().Encode()
 			encoded[0] = 0
 			testDecodeError(t, encoded, decoded, errEncodingInvalidGroup)
 
@@ -1111,77 +1523,63 @@ func TestEncoding_PublicKeyShare_Bad(t *testing.T) {
 			testDecodeError(t, encoded, decoded, errEncodingInvalidGroup)
 
 			// Decode: header too short
-			encoded = shares[0].Public().Encode()
+			encoded = shares[0].PublicKeyShare().Encode()
 			testDecodeError(t, encoded[:6], decoded, errEncodingInvalidLength)
 
 			// Decode: Bad Length
 			testDecodeError(t, encoded[:19], decoded, errEncodingInvalidLength)
 
 			// Decode: Bad public key
-			encoded = slices.Replace(encoded, 7, 7+g.ElementLength(), badElement...)
+			encoded = slices.Replace(encoded, 5, 5+g.ElementLength(), badElement...)
 			expectedErrorPrefix := "failed to decode PublicKeyShare: failed to decode public key"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
 			// Decode: bad commitment
-			encoded = shares[0].Public().Encode()
-			offset := 7 + 2*g.ElementLength()
+			encoded = shares[0].PublicKeyShare().Encode()
+			offset := 5 + 2*g.ElementLength()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 			expectedErrorPrefix = "failed to decode PublicKeyShare: failed to decode commitment 2"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
 			// Bad Hex
 			expectedErrorPrefix = "failed to decode PublicKeyShare: encoding/hex: odd length hex string"
-			if err = testDecodeHexOddLength(shares[0].Public(), decoded, expectedErrorPrefix); err != nil {
+			if err = testDecodeHexOddLength(shares[0].PublicKeyShare(), decoded, expectedErrorPrefix); err != nil {
 				t.Fatal(err)
 			}
 
-			// JSON
-			badKey := getBadElement(t, g)
-			badKeyHex := hex.EncodeToString(badKey)
-
-			if err = jsonTester("failed to decode PublicKeyShare", errEncodingInvalidJSONEncoding, shares[0], new(keys.PublicKeyShare),
-				jsonTesterBaddie{
-					"\"publicKey\"",
-					fmt.Sprintf("\"publicKey\":\"%s\",\"other\"", badKeyHex),
-					"failed to decode PublicKeyShare: element DecodeHex: ",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"vssCommitment\":[],\"other\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-				jsonTesterBaddie{
-					"\"vssCommitment\"",
-					"\"nope\"",
-					"",
-				},
-			); err != nil {
+			// JSON: bad public key.
+			data, err := json.Marshal(shares[0].PublicKeyShare())
+			if err != nil {
 				t.Fatal(err)
 			}
+
+			var document map[string]any
+			if err = json.Unmarshal(data, &document); err != nil {
+				t.Fatal(err)
+			}
+
+			document["publicKey"] = hex.EncodeToString(getBadElement(t, g))
+			data, err = json.Marshal(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			expectedErrorPrefix = "failed to decode PublicKeyShare: failed to decode public key"
+			testUnmarshalJSONErrorPrefix(t, keys.NewPublicKeyShareReceiver(g), data, expectedErrorPrefix)
 
 			// UnmarshallJSON: excessive commitment length
-			shares[0].VssCommitment = make([]*ecc.Element, 65536)
+			oversized := make([]any, 65536)
 			for i := range 65536 {
-				shares[0].VssCommitment[i] = g.NewElement()
+				oversized[i] = nil
 			}
-
-			data, err := json.Marshal(shares[0])
+			document["vssCommitment"] = oversized
+			data, err = json.Marshal(document)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			errInvalidPolynomialLength := "failed to decode PublicKeyShare: invalid polynomial length (exceeds uint16 limit 65535)"
-			testUnmarshalJSONError(t, new(keys.PublicKeyShare), data, errInvalidPolynomialLength)
+			testUnmarshalJSONError(t, keys.NewPublicKeyShareReceiver(g), data, errInvalidPolynomialLength)
 		})
 	}
 }
@@ -1192,7 +1590,6 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 
 	errEncodingInvalidLength := "failed to decode KeyShare: invalid encoding length"
 	errEncodingInvalidGroup := "failed to decode KeyShare: invalid group identifier"
-	errEncodingInvalidJSONEncoding := "failed to decode KeyShare: invalid JSON encoding"
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1225,18 +1622,18 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			testDecodeError(t, encoded[:25], decoded, errEncodingInvalidLength)
 
 			// Decode: Bad public key share
-			offset := 7
+			offset := 5
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
 
-			expectedErrorPrefix := "failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key: element Decode: "
+			expectedErrorPrefix := "failed to decode KeyShare: failed to decode PublicKeyShare: failed to decode public key"
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
 			// Decode: Bad scalar
-			offset += g.ElementLength() + len(shares[0].VssCommitment)*g.ElementLength()
+			offset += g.ElementLength() + len(shares[0].PublicKeyShare().Commitment())*g.ElementLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ScalarLength(), badScalar...)
-			expectedErrorPrefix = "failed to decode KeyShare: failed to decode secret key: scalar Decode: "
+			expectedErrorPrefix = "failed to decode KeyShare: failed to decode secret key"
 
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
@@ -1244,7 +1641,7 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			offset += g.ScalarLength()
 			encoded = shares[0].Encode()
 			encoded = slices.Replace(encoded, offset, offset+g.ElementLength(), badElement...)
-			expectedErrorPrefix = "failed to decode KeyShare: failed to decode VerificationKey: element Decode: "
+			expectedErrorPrefix = "failed to decode KeyShare: failed to decode VerificationKey"
 
 			testDecodeErrorPrefix(t, decoded, encoded, expectedErrorPrefix)
 
@@ -1252,34 +1649,15 @@ func TestEncoding_KeyShare_Bad(t *testing.T) {
 			expectedError := "failed to decode KeyShare:"
 			testDecodeHexFails(t, shares[0], decoded, expectedError)
 
-			// UnmarshallJSON: bad json
-			baddie := jsonTesterBaddie{
-				key:           "\"group\"",
-				value:         "bad",
-				expectedError: "invalid character 'b' looking for beginning of object key string",
-			}
-
-			if err = testJSONBaddie(shares[0], decoded, baddie); err != nil {
-				t.Fatal(err)
-			}
-
-			// UnmarshallJSON: bad group encoding
-			baddie = jsonTesterBaddie{
-				key:           "\"group\"",
-				value:         "\"group\":-1, \"oldGroup\"",
-				expectedError: errEncodingInvalidJSONEncoding,
-			}
-
-			if err = testJSONBaddie(shares[0], decoded, baddie); err != nil {
-				t.Fatal(err)
-			}
+			// JSON: malformed JSON is rejected after the receiver has a group.
+			expectedErrorPrefix = "unexpected end of JSON input"
+			testUnmarshalJSONErrorPrefix(t, keys.NewKeyShareReceiver(g), []byte(`{"group":`), expectedErrorPrefix)
 		})
 	}
 }
 
-func TestRegistry_Add_Bad(t *testing.T) {
+func TestRegistryConstruction_Bad(t *testing.T) {
 	errPublicKeyShareRegistered := errors.New("the public key share is already registered")
-	errPublicKeyShareCapacityExceeded := errors.New("can't add another public key share (full capacity)")
 
 	for _, g := range groups {
 		t.Run(g.String(), func(t *testing.T) {
@@ -1289,19 +1667,16 @@ func TestRegistry_Add_Bad(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			registry := makeRegistry(t, g, 3, 5, shares)
-
-			// add a public key share that has already been added
-			if err := registry.Add(shares[0].Public()); err == nil ||
+			public := make([]*keys.PublicKeyShare, len(shares))
+			for i, share := range shares {
+				public[i] = share.PublicKeyShare()
+			}
+			public[1] = shares[0].PublicKeyShare()
+			if _, err = keys.NewPublicKeyShareRegistry(g, 3, 5, shares[0].VerificationKey(), public); err == nil ||
 				err.Error() != errPublicKeyShareRegistered.Error() {
 				t.Fatalf("expected error %q, got %q", errPublicKeyShareRegistered, err)
-			}
-
-			// add a share though we're full
-			shares[0].ID = 5 + 1
-			if err := registry.Add(shares[0].Public()); err == nil ||
-				err.Error() != errPublicKeyShareCapacityExceeded.Error() {
-				t.Fatalf("expected error %q, got %q", errPublicKeyShareCapacityExceeded, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrInvalidRegistry)
 			}
 		})
 	}
@@ -1331,9 +1706,8 @@ func TestRegistry_Get(t *testing.T) {
 	}
 }
 
-func TestRegistry_VerifyPublicKey(t *testing.T) {
+func TestRegistry_ContainsPublicKey(t *testing.T) {
 	errNilPubKey := errors.New("the provided public key is nil")
-	errRegistryHasNilPublicKey := errors.New("encountered a nil public key in registry")
 	errVerifyBadPubKey := errors.New("the public key differs from the one registered")
 	errVerifyUnknownID := errors.New("the requested identifier is not registered")
 	for _, g := range groups {
@@ -1347,50 +1721,52 @@ func TestRegistry_VerifyPublicKey(t *testing.T) {
 			registry := makeRegistry(t, g, 3, 5, shares)
 
 			id := uint16(1)
-			pk := registry.PublicKeyShares[id].PublicKey
+			pk := registry.Get(id).PublicKey()
 
-			if err := registry.VerifyPublicKey(id, pk); err != nil {
+			if err := registry.ContainsPublicKey(id, pk); err != nil {
 				t.Fatalf("unexpected error %q", err)
 			}
 
-			if err := registry.VerifyPublicKey(id, nil); err == nil || err.Error() != errNilPubKey.Error() {
+			if err := registry.ContainsPublicKey(id, nil); err == nil || err.Error() != errNilPubKey.Error() {
 				t.Fatalf("expecter error %q, got %q", errNilPubKey, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrInvalidMaterial)
 			}
 
 			expected := fmt.Errorf("%w for ID %d", errVerifyBadPubKey, id)
-			if err := registry.VerifyPublicKey(id, g.NewElement()); err == nil || err.Error() != expected.Error() {
+			if err := registry.ContainsPublicKey(id, g.NewElement()); err == nil || err.Error() != expected.Error() {
 				t.Fatalf("expecter error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrInvalidMaterial)
 			}
 
-			registry.PublicKeyShares[1].PublicKey = nil
-			expected = fmt.Errorf("%w for ID %d", errRegistryHasNilPublicKey, id)
-			if err := registry.VerifyPublicKey(id, g.NewElement()); err == nil || err.Error() != expected.Error() {
+			expected = fmt.Errorf("%w: %d", errVerifyUnknownID, 0)
+			if err := registry.ContainsPublicKey(0, g.NewElement()); err == nil || err.Error() != expected.Error() {
 				t.Fatalf("expecter error %q, got %q", expected, err)
-			}
-
-			expected = fmt.Errorf("%w: %q", errVerifyUnknownID, 0)
-			if err := registry.VerifyPublicKey(0, g.NewElement()); err == nil || err.Error() != expected.Error() {
-				t.Fatalf("expecter error %q, got %q", expected, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrUnknownShare)
 			}
 		})
 	}
 }
 
 func compareRegistries(r1, r2 *keys.PublicKeyShareRegistry) error {
-	if r1.Group != r2.Group || r1.Total != r2.Total || r1.Threshold != r2.Threshold {
+	if r1.Group() != r2.Group() || r1.Total() != r2.Total() || r1.Threshold() != r2.Threshold() {
 		return errors.New("wrong header")
 	}
 
-	if !r1.VerificationKey.Equal(r2.VerificationKey) {
+	if !r1.VerificationKey().Equal(r2.VerificationKey()) {
 		return errors.New("wrong gpk")
 	}
 
-	if len(r1.PublicKeyShares) != len(r2.PublicKeyShares) {
+	left := r1.Shares()
+	right := r2.Shares()
+	if len(left) != len(right) {
 		return errors.New("wrong pks length")
 	}
 
-	for i, pks := range r1.PublicKeyShares {
-		pks2 := r2.PublicKeyShares[i]
+	for i, pks := range left {
+		pks2 := right[i]
 		if err := comparePublicKeyShare(pks, pks2, true); err != nil {
 			return err
 		}
@@ -1405,14 +1781,20 @@ func makeRegistry(
 	threshold, maxParticipants uint16,
 	keyShares []*keys.KeyShare,
 ) *keys.PublicKeyShareRegistry {
-	registry := keys.NewPublicKeyShareRegistry(g, threshold, maxParticipants)
-	for _, keyShare := range keyShares {
-		if err := registry.Add(keyShare.Public()); err != nil {
-			t.Fatal(err)
-		}
+	public := make([]*keys.PublicKeyShare, len(keyShares))
+	for i, keyShare := range keyShares {
+		public[i] = keyShare.PublicKeyShare()
 	}
-
-	registry.VerificationKey = keyShares[0].VerificationKey
+	registry, err := keys.NewPublicKeyShareRegistry(
+		g,
+		threshold,
+		maxParticipants,
+		keyShares[0].VerificationKey(),
+		public,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return registry
 }
@@ -1446,7 +1828,7 @@ func TestRegistry_Encoding(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r2 = new(keys.PublicKeyShareRegistry)
+			r2 = keys.NewPublicKeyShareRegistryReceiver(g)
 			if err := json.Unmarshal(j, r2); err != nil {
 				t.Fatal(err)
 			}
@@ -1481,6 +1863,8 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			// too short
 			if err = decoded.Decode([]byte{1, 2, 3}); err == nil || err.Error() != errEncodingInvalidLength.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingInvalidLength, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
 			}
 
 			// invalid ciphersuite
@@ -1489,6 +1873,8 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 
 			if err = decoded.Decode(e); err == nil || err.Error() != errInvalidGroup.Error() {
 				t.Fatalf("expected error %q, got %q", errInvalidGroup, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
 			}
 
 			// too short
@@ -1497,16 +1883,20 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 
 			if err = decoded.Decode(e[:l]); err == nil || err.Error() != errEncodingInvalidLength.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingInvalidLength, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
 			}
 
 			// Decode: Bad public key
 			e = registry.Encode()
 			e = slices.Replace(e, 5, 5+g.ElementLength(), badElement...)
 			expectedErrorPrefix := errors.New(
-				"failed to decode PublicKeyShareRegistry: invalid group public key encoding: element Decode: ",
+				"failed to decode PublicKeyShareRegistry: invalid group public key encoding",
 			)
 			if err = decoded.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
 			}
 
 			// Decode: a faulty public key share, with a wrong group
@@ -1517,12 +1907,14 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 			)
 			if err = decoded.Decode(e); err == nil || !strings.HasPrefix(err.Error(), expectedErrorPrefix.Error()) {
 				t.Fatalf("expected error %q, got %q", expectedErrorPrefix, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
 			}
 
 			// Decode: double entry, replacing the 2nd share with the third
-			pks1 := registry.PublicKeyShares[1].Encode()
-			pks2 := registry.PublicKeyShares[2].Encode()
-			pks3 := registry.PublicKeyShares[3].Encode()
+			pks1 := registry.Get(1).Encode()
+			pks2 := registry.Get(2).Encode()
+			pks3 := registry.Get(3).Encode()
 			start := 5 + g.ElementLength() + len(pks1)
 			end := start + len(pks2)
 			e = registry.Encode()
@@ -1534,17 +1926,23 @@ func TestRegistry_Decode_Bad(t *testing.T) {
 
 			if err = decoded.Decode(e); err == nil || err.Error() != errEncodingPKSDuplication.Error() {
 				t.Fatalf("expected error %q, got %q", errEncodingPKSDuplication, err)
+			} else {
+				expectErrorIs(t, err, keys.ErrEncodingFailure)
+				expectErrorIs(t, err, keys.ErrInvalidRegistry)
 			}
 
 			// DecodeHex
 			expectedError := "failed to decode PublicKeyShareRegistry:"
 			testDecodeHexFails(t, registry, decoded, expectedError)
 
-			// JSON: bad json
-			errInvalidJSON := "failed to decode PublicKeyShareRegistry: failed to decode PublicKeyShare: invalid JSON encoding"
-			if err = jsonTester("failed to decode PublicKeyShareRegistry", errInvalidJSON, registry, decoded); err != nil {
-				t.Fatal(err)
-			}
+			// JSON: malformed JSON is rejected after the receiver has a group.
+			expectedErrorPrefix = errors.New("unexpected end of JSON input")
+			testUnmarshalJSONErrorPrefix(
+				t,
+				keys.NewPublicKeyShareRegistryReceiver(g),
+				[]byte(`{"group":`),
+				expectedErrorPrefix.Error(),
+			)
 		})
 	}
 }
@@ -1566,7 +1964,7 @@ func TestRegistry_JSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			r2 := new(keys.PublicKeyShareRegistry)
+			r2 := keys.NewPublicKeyShareRegistryReceiver(g)
 			if err := json.Unmarshal(j, r2); err != nil {
 				t.Fatal(err)
 			}

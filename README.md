@@ -5,8 +5,8 @@
 
 ```go
 import (
-	"github.com/bytemare/secret-sharing"
-	"github.com/bytemare/secret-sharing/keys"
+    "github.com/bytemare/secret-sharing"
+    "github.com/bytemare/secret-sharing/keys"
 )
 ```
 

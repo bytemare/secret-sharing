@@ -28,7 +28,7 @@ func ExampleShard() {
 	threshold := uint16(3)    // threshold is the minimum amount of necessary shares to recombine the secret
 	shareholders := uint16(7) // the max amount of key share-holders
 
-	// This is the global secret to be shared
+	// Create a new global secret to be sharded.
 	secret := g.NewScalar().Random()
 
 	// Shard the secret into shares and commit to the sharing polynomial.
